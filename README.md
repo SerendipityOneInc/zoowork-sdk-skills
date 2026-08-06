@@ -40,4 +40,4 @@ ZooClaw 平台自己有**运行时 skill registry**（DB-backed，`skl_...` id�
 
 - [ ] `zooclaw-managed-agents` skill 正文（等 SDK quickstart 文档写完可直接改造）
 - [ ] CONTRIBUTING.md：评审标准（安全审查！skill 是提示词注入面）
-- [ ] 公开前 scrub：去内部主机名/人名（见 ../REPO-PLAN.md 清单）
+- [ ] 公开前 scrub：去内部主机名/人名（见 ../notes/REPO-PLAN.md 清单）
