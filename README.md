@@ -53,7 +53,6 @@ The skill here teaches an assistant how to build and upload the other kind. See
 ```
 skills/<name>/SKILL.md     the skill itself: frontmatter + instructions, loaded whenever it triggers
 skills/<name>/references/  depth, read on demand when SKILL.md points at it
-template/SKILL.md          starting point for a new skill
 evals/                     task prompts and assertions used to check a skill still works
 ```
 

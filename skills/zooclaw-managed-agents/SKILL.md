@@ -81,26 +81,6 @@ README first - the answer is usually a file it already has.
 
 ---
 
-## ⚠️ Your prior is probably Claude Managed Agents
-
-These are the differences that produce code which compiles, looks right, and fails at runtime. Check
-this table before writing a call you think you remember.
-
-| Area | The prior that breaks | ZooClaw |
-|---|---|---|
-| Creating a session | `POST /v1/sessions` with the agent in the body | `POST /v1/agents/{id}/sessions` - the agent is in the **path**. Every session method takes `agentId` first: `createSession(agentId, ...)`, `postEvents(agentId, sessionId, ...)`, `streamEvents(agentId, sessionId, ...)` |
-| After creating an agent | It is usable | It is `stopped`. Call `startAgent()` or every session call answers `409 agent_not_running` |
-| Waiting for readiness | Wait for an "active"/"ready" state | Wait for `status.desired_state === 'running'`. `actual_state` reports **chat-channel** health, never reaches `running`, and parks at `activating` forever for an API-only agent. Use `waitUntilRunning()` and do not hand-roll it |
-| Streaming text | Delta events append, so concatenate them | ZooClaw's `chat.delta` is **snapshot-replace**, not append - and the SDK never requests that lane at all, so there is no flag to flip. Build the reply from `agent.assistant` events via `assistantText(ev)` |
-| Turn completion | `stop_reason`, `status_idle`, `requires_action` | No turn-level equivalent. A turn ends at `run.finished` and the outcome is `runOutcome(ev)`. (`stopReason` does appear, but per assistant message, not per turn.) |
-| Your own tools | Declare a custom tool, answer with a tool result | **Does not exist.** No custom tool type, no tool-result event. See `references/not-supported.md` for the two real alternatives |
-| End-user credentials | Vaults | **Do not exist.** `putCredential()` / `listCredentials()` are on the client but `@deprecated` and answer 404 |
-| Files on a session | `resources[]`, mounts, uploads | `createSession` accepts `initial_events` and `metadata`, nothing else |
-| Environments | Create one first | Optional. A default is already pinned, and the choice **locks permanently** the first time a sandbox is created |
-| Model ids | Bare model names | Prefixed, e.g. `litellm/claude-sonnet-5`. Call `listModels()` rather than typing one from memory |
-
----
-
 ## The mandatory flow
 
 | Step | Call | Frequency |
@@ -263,6 +243,18 @@ either over recalling a shape.
 
 ## Common pitfalls
 
+- **Do not poll `actual_state`.** It reports chat-channel health, `running` is not one of its
+  values, and an API-only agent parks at `activating` forever - a loop watching it never returns.
+  `waitUntilRunning()` polls `desired_state` and throws `408`/`'timeout'` on a spent budget.
+- **There is no custom tool type and no tool-result event.** The agent cannot call back into your
+  process mid-turn. `references/not-supported.md` - Client-executed custom tools has the two real
+  alternatives (a remote MCP server, or doing the work between turns).
+- **`putCredential()` / `listCredentials()` are dead for API-key callers.** Both are `@deprecated`
+  and answer 404 through the gateway; the platform seeds model credentials itself, and there is no
+  store for your end users' secrets.
+- **An Environment choice locks permanently** on first sandbox creation. `stopAgent()` does not
+  release it, and a later change answers `409 environment_locked`. Decide before the agent's first
+  turn or not at all.
 - **`createAgent` and `getAgent` return different shapes.** Create hands back a flat receipt with a
   top-level `config_version`; reads return a projection with the config under `declared` and the
   version at `status.config_version`. Reading the wrong one yields `undefined`, and `undefined ===
