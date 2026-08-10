@@ -1,1 +1,5 @@
 .DS_Store
+node_modules/
+
+# Eval runs: prompts and assertions are committed, run artifacts are not.
+evals/workspace/

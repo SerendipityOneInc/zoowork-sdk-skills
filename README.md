@@ -1,43 +1,72 @@
-# zooclaw-sdk-skills — 教 AI 编程助手构建 ZooClaw Agents 的 Skills
+# ZooClaw Skills
 
-> 定位（2026-08-06 定）：**给客户的 AI 编程助手用的知识包**——装上后，Claude Code /
-> Cursor 等编程 agent 就知道怎么用 ZooClaw Managed Agents API / SDK 正确地构建集成。
-> 直接先例：`anthropics/skills` 里的 `skills/claude-api/python/managed-agents`
-> （Anthropic 把自家 Managed Agents API 教程做成 skill 发在 org 最大的公开仓里）。
->
-> **SDK 和 skill 的分工**：SDK 给客户的**代码**在运行时调 API；skill 给客户的
-> **AI 编程助手**在写代码时学会怎么用 SDK。一个是 runtime 库，一个是知识打包。
-> 浩霖那句「写一个文档让你的 ai 自己 build 一个起来」的正规形态就是这个仓。
+Skills that teach AI coding assistants how to build on [ZooClaw Managed Agents](https://github.com/SerendipityOneInc/zooclaw-agents-docs).
 
-## 目录规范
+Install one of these into Claude Code, Cursor, or any other assistant that reads
+[Agent Skills](https://github.com/anthropics/skills), and it will know the shape of the API before
+it writes the first line: which calls exist, which do not, and the handful of places where code that
+looks right fails at runtime.
 
-```
-skills/
-  <skill-name>/
-    SKILL.md          # 必须：frontmatter(name, description) + 给 agent 的规程正文
-    references/       # 可选：SKILL.md 按需引用的深入文档
-    scripts/          # 可选：可执行脚本
+## Install
+
+In Claude Code:
+
+```bash
+/plugin marketplace add SerendipityOneInc/zooclaw-sdk-skills
 ```
 
-结构对标 `anthropics/skills`（一目录一 skill；作者模板抄它的 `template/`）。
+```bash
+/plugin install zooclaw-agents@zooclaw-skills
+```
 
-## 首批 skill 规划
+For any other assistant, copy the skill directory into wherever it looks for skills - `.claude/skills/`
+in a project, or `~/.claude/skills/` for every project:
 
-| skill | 内容 | 状态 |
-|---|---|---|
-| `zooclaw-managed-agents` | 教编程 agent 用 Managed Agents API/SDK：agent 是 create-once-reference-by-ID、session 生命周期、SSE `?after=` 续传、`run.finished` 终止、两种 auth 模式 | ⬜ 骨架已建，正文待写（原料：SMOKE.md 五步、SDK README、app-kit 用法） |
-| `hello-zooclaw` | SKILL.md 最小结构示例 | ✅（历史遗留，格式示例） |
+```bash
+git clone https://github.com/SerendipityOneInc/zooclaw-sdk-skills.git
+cp -r zooclaw-sdk-skills/skills/zooclaw-managed-agents ~/.claude/skills/
+```
 
-## 与「平台 Skill 托管仓」的关系（原 skills/ 构想，已并入本仓放缓）
+## What is here
 
-ZooClaw 平台自己有**运行时 skill registry**（DB-backed，`skl_...` id，
-`putAgentSkill` 安装到 agent 上）——那是**另一种 skill**（装在 ZooClaw agent 上的能力，
-不是装在编程助手上的知识）。原计划的第三方托管仓（PR → 审核 → CI 上传 registry）
-因发布管线依赖未实施的 API key 层而后置；若将来启动，可在本仓加 `registry/` 目录或另立仓。
-概念辨析见 zooclaw-engine `CONTEXT.md` 的「skill 三义」。
+| Skill | What it gives an assistant |
+|---|---|
+| [`zooclaw-managed-agents`](skills/zooclaw-managed-agents/SKILL.md) | How to create and configure agents, run sessions, consume the event stream, upload and attach skills, schedule autonomous runs - and which capabilities are absent, with the real alternative for each |
 
-## 待办
+`zooclaw-managed-agents` covers the TypeScript SDK, `@zooclaw-agents/sdk`. There is no Python SDK
+yet; the skill says so rather than letting an assistant invent an import.
 
-- [ ] `zooclaw-managed-agents` skill 正文（等 SDK quickstart 文档写完可直接改造）
-- [ ] CONTRIBUTING.md：评审标准（安全审查！skill 是提示词注入面）
-- [ ] 公开前 scrub：去内部主机名/人名（见 ../notes/REPO-PLAN.md 清单）
+## Two things called "skill"
+
+Worth separating before it causes confusion, because both words appear in the same conversation:
+
+- **The skills in this repo** are installed into a *developer's coding assistant*, and are read while
+  writing code.
+- **ZooClaw platform skills** are uploaded with `POST /v1/skills` and attached to a *running ZooClaw
+  agent*, which reads them while doing its job.
+
+The skill here teaches an assistant how to build and upload the other kind. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the full distinction.
+
+## Layout
+
+```
+skills/<name>/SKILL.md     the skill itself: frontmatter + instructions, loaded whenever it triggers
+skills/<name>/references/  depth, read on demand when SKILL.md points at it
+template/SKILL.md          starting point for a new skill
+evals/                     task prompts and assertions used to check a skill still works
+```
+
+## Changing a skill
+
+A skill body is a prompt, and prompt edits do not behave like code edits - they can improve one task
+while quietly breaking another. `evals/` exists for that: it holds realistic task prompts and
+machine-checkable assertions about the code an assistant produces. Run them before and after a
+substantive change and compare. See [evals/README.md](evals/README.md).
+
+Contribution conventions, including the English-only rule and what gets checked in review, are in
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+MIT. See [LICENSE](LICENSE).

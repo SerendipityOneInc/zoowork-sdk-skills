@@ -1,0 +1,186 @@
+{
+  "skill_name": "zooclaw-managed-agents",
+  "notes": "Assertions run against the code an assistant produces, not against a live deployment. `present` passes when any pattern matches, `absent` passes when none do, and `order` passes when each pattern first appears after the previous one. Patterns are JavaScript regular expressions, case-sensitive. See README.md.",
+  "evals": [
+    {
+      "id": 1,
+      "name": "first-integration-from-zero",
+      "prompt": "I have a ZooClaw API key (the zct_ kind). Write me a small Node script I can run with tsx that creates an agent, asks it 'what is the capital of France', prints the answer as it streams, and then deletes the agent again so I don't leave junk behind.",
+      "expected_output": "A TypeScript file importing @zooclaw-agents/sdk that creates an agent, starts it, waits on desired_state (ideally via waitUntilRunning), opens a session with an initial user.message, streams until run.finished, then stops and deletes.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "imports the real package name",
+          "kind": "present",
+          "patterns": ["@zooclaw-agents/sdk"]
+        },
+        {
+          "name": "does not invent a package name",
+          "kind": "absent",
+          "patterns": ["@zooclaw/sdk", "@zooclaw/agents-sdk", "['\"]zooclaw['\"]"]
+        },
+        {
+          "name": "starts the agent after creating it",
+          "kind": "order",
+          "patterns": ["createAgent", "startAgent"]
+        },
+        {
+          "name": "never polls actual_state",
+          "kind": "absent",
+          "patterns": ["actual_state"]
+        },
+        {
+          "name": "waits on desired_state, or lets the SDK do it",
+          "kind": "present",
+          "patterns": ["waitUntilRunning", "desired_state"]
+        },
+        {
+          "name": "passes agentId to createSession",
+          "kind": "present",
+          "patterns": ["createSession\\(\\s*agentId", "createSession\\(\\s*[a-zA-Z_$][\\w$]*\\s*,"]
+        },
+        {
+          "name": "ends the turn on run.finished instead of waiting for the stream to close",
+          "kind": "present",
+          "patterns": ["isRunFinished", "run\\.finished"]
+        },
+        {
+          "name": "does not accumulate chat.delta frames",
+          "kind": "absent",
+          "patterns": ["chat\\.delta", "\\bdelta\\s*\\+="]
+        },
+        {
+          "name": "stops before deleting",
+          "kind": "order",
+          "patterns": ["stopAgent", "deleteAgent"]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "host-a-locally-built-agent",
+      "prompt": "I built a deck-editing assistant locally with Claude Code. It's a system prompt in AGENTS.md plus two skill folders (slide-layout/ and chart-builder/, each with a SKILL.md). My front end is fine, I host that myself - what I don't have is anywhere for the agent and its skills to actually run. I have a ZooClaw key. Set this up for me.",
+      "expected_output": "A provisioning script that creates an agent carrying the system prompt as persona.docs, zips each skill directory with the top-level directory name matching the SKILL.md frontmatter name, uploads each with a scope, attaches them, and verifies the attachment with listAgentSkills.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "puts the system prompt into persona.docs",
+          "kind": "present",
+          "patterns": ["persona", "docs"]
+        },
+        {
+          "name": "uploads the skills through the SDK",
+          "kind": "present",
+          "patterns": ["uploadSkill"]
+        },
+        {
+          "name": "passes a scope on upload",
+          "kind": "present",
+          "patterns": ["scope:\\s*['\"](org|personal)['\"]"]
+        },
+        {
+          "name": "surfaces the zip top-level directory rule",
+          "kind": "present",
+          "patterns": ["top-level", "top level", "directory name", "frontmatter"]
+        },
+        {
+          "name": "attaches after uploading",
+          "kind": "order",
+          "patterns": ["uploadSkill", "putAgentSkill"]
+        },
+        {
+          "name": "verifies the attachment rather than trusting the response",
+          "kind": "present",
+          "patterns": ["listAgentSkills"]
+        },
+        {
+          "name": "uses an idempotency key so a re-run does not create a second agent",
+          "kind": "present",
+          "patterns": ["dempotency", "idempotencyKey"]
+        },
+        {
+          "name": "does not invent client-executed custom tools",
+          "kind": "absent",
+          "patterns": ["custom_tool", "customTool", "type:\\s*['\"]custom['\"]"]
+        },
+        {
+          "name": "keeps the key server-side",
+          "kind": "absent",
+          "patterns": ["VITE_ZOOCLAW", "NEXT_PUBLIC_ZOOCLAW", "REACT_APP_ZOOCLAW"]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "export-a-long-transcript",
+      "prompt": "Our support agent has sessions that run to several hundred messages. Write a function that takes an agent id and a session id and exports the complete transcript of that session to a JSON file. It has to be complete - we're using it for compliance review.",
+      "expected_output": "Code that either calls listAllEvents, or pages listEvents with the after cursor until exhausted, or uses getSession with history. Must not call listEvents once and treat the result as the whole session.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "reads the whole session rather than one page",
+          "kind": "present",
+          "patterns": ["listAllEvents", "after:", "history:\\s*true"]
+        },
+        {
+          "name": "does not treat a single listEvents call as complete",
+          "kind": "absent",
+          "patterns": ["listEvents\\([^)]*\\)\\s*;?\\s*\\n[^\\n]*writeFile"]
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "capability-boundary-custom-tool",
+      "prompt": "Mid-conversation I want the agent to call our internal pricing API to look up a quote for the customer, get the number back, and keep going in the same turn using that number. Wire that up against ZooClaw.",
+      "expected_output": "A refusal to invent an API that does not exist. The assistant should say client-executed custom tools are not supported, and offer either a remote HTTP MCP server, or waiting for run.finished and posting the result back as the next user.message.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "does not invent a custom tool type or tool-result event",
+          "kind": "absent",
+          "patterns": ["user\\.custom_tool_result", "type:\\s*['\"]custom['\"]", "tool_result"]
+        },
+        {
+          "name": "says plainly that this is not supported",
+          "kind": "present",
+          "patterns": ["not supported", "does not exist", "no custom tool", "isn't supported", "is not available"]
+        },
+        {
+          "name": "offers one of the two real alternatives",
+          "kind": "present",
+          "patterns": ["MCP", "run\\.finished", "next turn", "user\\.message"]
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "reconnect-a-dropped-stream",
+      "prompt": "Our ZooClaw event stream keeps dying partway through long tasks and we lose the rest of the answer. We're using streamEvents in a loop. Make it survive a dropped connection.",
+      "expected_output": "A wrapper that remembers the last seq seen and re-opens the stream with { after: lastSeq }, distinguishing a caller abort from a dropped connection, rather than restarting from the beginning or de-duplicating by hand.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "resumes from the last seq",
+          "kind": "present",
+          "patterns": ["after:\\s*last", "after:\\s*[a-zA-Z_$][\\w$]*Seq", "lastSeq"]
+        },
+        {
+          "name": "reads the cursor off the event",
+          "kind": "present",
+          "patterns": ["\\.seq"]
+        },
+        {
+          "name": "does not rebuild the transcript from scratch on every reconnect",
+          "kind": "absent",
+          "patterns": ["after:\\s*0\\b"]
+        },
+        {
+          "name": "respects an abort instead of reconnecting forever",
+          "kind": "present",
+          "patterns": ["signal", "abort", "Abort"]
+        }
+      ]
+    }
+  ]
+}
