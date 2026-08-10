@@ -199,8 +199,9 @@ history-reading path, and the reconnect pattern.
   `{ seq, eventType, payload, runId?, turn?, createdAt? }`. Use `assistantText`, `thinkingText`,
   `toolCall`, `isRunFinished`, `runOutcome` rather than reaching into `payload` yourself.
 - **`seq` is a durable per-session cursor.** Remember the last one you saw. Reconnect with
-  `streamEvents(agentId, sessionId, { after: lastSeq })` and the server replays from there with
-  nothing lost and nothing duplicated. **The SDK does not reconnect for you** - it opens one request
+  `streamEvents(agentId, sessionId, { after: lastSeq })` and the server replays from your cursor, so
+  nothing is lost; it may re-send the boundary frame, and the generator drops that for you.
+  **The SDK does not reconnect for you** - it opens one request
   and the generator ends when the server closes on idle. Looping over that is the caller's job.
 - **A run can succeed with failed tool calls.** `toolCall(ev).isError === true` does not fail the
   run. Only `runOutcome(ev)` decides.
@@ -267,8 +268,8 @@ either over recalling a shape.
   version at `status.config_version`. Reading the wrong one yields `undefined`, and `undefined ===
   undefined` makes a no-op check pass when it should not.
 - **`config_version` is not an optimistic-concurrency token.** Every `PUT` bumps it, including one
-  that changes nothing, and the gateway bumps it twice on its own right after create. Comparing
-  versions to detect drift does not work here.
+  that changes nothing, and so does attaching or detaching a skill. A version that moved does not
+  tell you your own section changed, so drift detection built on it does not work.
 - **Match errors on `ZooclawError.status` and `.type`, never on the message.** There are two error
   vocabularies, because there are two envelopes: the sessions family answers bare codes
   (`agent_not_running`, `session_archived`), the agents family answers dotted ones
