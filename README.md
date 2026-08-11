@@ -9,23 +9,27 @@ looks right fails at runtime.
 
 ## Install
 
-In Claude Code:
+```bash
+npx skills add SerendipityOneInc/zoowork-sdk-skills
+```
+
+That is the whole thing. The [`skills` CLI](https://www.skills.sh/) installs into whichever
+assistants you have - Claude Code, Codex, Cursor, OpenCode and 70-odd others - each in the
+directory it actually reads. It needs **Node 22.20 or later**.
+
+Useful flags: `-g` installs for every project instead of the current one, `-a claude-code`
+targets one assistant, `--copy` copies instead of symlinking (a symlink means upstream
+updates reach you without reinstalling).
+
+Using Claude Code and nothing else? The plugin route does the same job:
 
 ```bash
 /plugin marketplace add SerendipityOneInc/zoowork-sdk-skills
-```
-
-```bash
 /plugin install zooclaw-agents@zooclaw-skills
 ```
 
-For any other assistant, copy the skill directory into wherever it looks for skills - `.claude/skills/`
-in a project, or `~/.claude/skills/` for every project:
-
-```bash
-git clone https://github.com/SerendipityOneInc/zoowork-sdk-skills.git
-cp -r zoowork-sdk-skills/skills/zooclaw-managed-agents ~/.claude/skills/
-```
+Install it wherever you are building, not only where you are reading. The skill is about the
+platform, so it earns its keep in *your* project.
 
 ## What is here
 
