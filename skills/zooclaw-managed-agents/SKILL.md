@@ -62,7 +62,7 @@ export ZOOCLAW_API_KEY='zct_...'
 
 ### The App Kit path
 
-`https://github.com/SerendipityOneInc/zooclaw-app-kit` is a Cloudflare Workers chat application that
+`https://github.com/SerendipityOneInc/zoowork-app-kit` is a Cloudflare Workers chat application that
 already consumes this SDK. It provisions an agent on first use, so the user needs no `agt_` id.
 
 ```bash
@@ -212,7 +212,7 @@ the agent's sandbox and read by the model when it judges the skill relevant. The
 session-level skill list and no API to invoke one; attaching it changes what the agent knows, not
 what you can call.
 
-Two things surprise everyone:
+Three things surprise everyone:
 
 - **A brand-new agent already has the global catalog attached** (document skills like `docx`,
   `pptx`, `xlsx`, `pdf` among them). You do not install those, and `putAgentSkill()` against a
@@ -221,6 +221,20 @@ Two things surprise everyone:
 - **The zip's top-level directory name must equal the `name` in `SKILL.md`'s frontmatter.** This is
   the single most common first failure. `uploadSkill()` takes the zip plus a required
   `{ scope: 'org' | 'personal' }`; `global` is refused on upload.
+- **The frontmatter `description` is the trigger; the body is the payload.** The model decides
+  whether to load a skill by reading the description ALONE - the body is read afterwards, and only
+  if the description won. Write it as *when to use this*, containing the words a user would
+  actually say, not as *what this is*. This is the one failure here that reports success at every
+  step: the upload succeeds, `putAgentSkill()` succeeds, `listAgentSkills()` returns the row with
+  `eligible: true` and a real `basePath`, and the skill still never fires. When a user says their
+  skill "does nothing", check the description before anything else.
+
+  ```yaml
+  description: Notes about our office coffee bar.                    # never fires
+  description: Use whenever the user asks about the office coffee     # fires
+    menu, coffee prices, or wants to order a coffee - including the
+    words latte, espresso, or americano.
+  ```
 
 Uploading a local skill directory and attaching it is the core of
 `references/deploy-your-agent.md` - read it when the user has skills of their own.
@@ -238,7 +252,7 @@ Uploading a local skill directory and attaching it is the core of
 | Something you suspect is not supported (custom tools, vaults, webhooks, file uploads, approvals, memory) | `references/not-supported.md` - **read before designing**, each entry names the real alternative |
 
 For anything none of those cover, the SDK's shipped `dist/index.d.ts` is the authority, and the
-developer documentation is at `https://github.com/SerendipityOneInc/zooclaw-agents-docs`. Prefer
+developer documentation is at `https://github.com/SerendipityOneInc/zoowork-agents-docs`. Prefer
 either over recalling a shape.
 
 ## Common pitfalls
