@@ -1,6 +1,6 @@
 # ZooClaw Skills
 
-Skills that teach AI coding assistants how to build on [ZooClaw Managed Agents](https://github.com/SerendipityOneInc/zooclaw-agents-docs).
+Skills that teach AI coding assistants how to build on [ZooClaw Managed Agents](https://github.com/SerendipityOneInc/zoowork-agents-docs).
 
 Install one of these into Claude Code, Cursor, or any other assistant that reads
 [Agent Skills](https://github.com/anthropics/skills), and it will know the shape of the API before
@@ -12,7 +12,7 @@ looks right fails at runtime.
 In Claude Code:
 
 ```bash
-/plugin marketplace add SerendipityOneInc/zooclaw-sdk-skills
+/plugin marketplace add SerendipityOneInc/zoowork-sdk-skills
 ```
 
 ```bash
@@ -23,8 +23,8 @@ For any other assistant, copy the skill directory into wherever it looks for ski
 in a project, or `~/.claude/skills/` for every project:
 
 ```bash
-git clone https://github.com/SerendipityOneInc/zooclaw-sdk-skills.git
-cp -r zooclaw-sdk-skills/skills/zooclaw-managed-agents ~/.claude/skills/
+git clone https://github.com/SerendipityOneInc/zoowork-sdk-skills.git
+cp -r zoowork-sdk-skills/skills/zooclaw-managed-agents ~/.claude/skills/
 ```
 
 ## What is here
