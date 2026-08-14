@@ -1,6 +1,6 @@
 # TypeScript SDK surface
 
-All 44 methods on `ZooclawClient`, grouped by area, signatures exactly as `src/client.ts` declares
+All 50 methods on `ZooclawClient`, grouped by area, signatures exactly as `src/client.ts` declares
 them. The package is `@zooclaw-agents/sdk` - ESM only (no CJS `require` condition, no subpath
 exports), zero runtime dependencies, `engines.node >= 20`, shipping `dist/index.d.ts`, which is the
 authority over anything here. `SKILL.md` has the mandatory flow; this file is for looking up a
@@ -312,6 +312,29 @@ about the outcome, `run_projection` rows are outcome records (`fired_at` / `stat
 it created - list the agent's sessions and match `channel: 'cron'` against the `session_key` prefix
 `agent:{agent_id}:cron:{schedule_id}:`.
 
+**A cron job can carry an outcome gate.** `payload.outcome` on `ScheduleInput` (and the agent-level
+default at `resource.outcome`) says what "done" looks like:
+
+```ts
+payload: {
+  kind: 'agentTurn',
+  message: 'Generate the weekly report.',
+  outcome: {
+    description: 'A non-empty report exists at /workspace/report.md.',
+    evaluator: { type: 'command', command: 'test -s /workspace/report.md' },  // or { type: 'rubric', rubric: { type: 'text', text: '...' } }
+    maxIterations: 3,              // 1-5
+    publish: 'after_satisfied',    // | 'always' | 'never'
+  },
+}
+```
+
+The run evaluates, revises, and finalizes inside itself, and under the default policy nothing that
+failed evaluation is announced. Stored verbatim - no defaults are injected into the stored copy,
+and an unknown key anywhere inside `outcome` is a 400 naming the field, so a typo cannot silently
+drop a limit. Job-level `outcome` overrides the agent default; an explicit `null` opts the job out.
+Cron fires only: heartbeats and interactive sessions never evaluate. The storage round trip is
+verified; an evaluated fire has not been observed yet.
+
 ## Approvals
 
 ```ts
@@ -334,6 +357,45 @@ tool-call id. **The loop has never been closed end to end:** the only observatio
 empty `approvals` array, so `ApprovalRecord`'s field names are unverified. Do not build on it, and
 note that a run parked on an approval burns its whole turn budget waiting. The reasoning, and what
 to do instead, is in `references/not-supported.md` - Approvals.
+
+## System prompt
+
+```ts
+getSystemPrompt(agentId: string): Promise<SystemPromptInfo>
+previewSystemPrompt(agentId: string, input: SystemPromptPreviewInput): Promise<SystemPromptPreview>
+
+export type SystemPromptDeclaration =
+  | { source: 'platform'; version: number }
+  | { source: 'custom'; base_version: number; template: string }
+```
+
+A fresh create pins the platform template version active at that moment - the declaration reads
+back as `{ source: 'platform', version: N }` - and the pin **never follows a later platform
+activation**: ordinary PUTs, skill changes and rerenders keep it. On PUT the `system_prompt`
+section is replace-on-write, like `tool_policy`, not merged. `previewSystemPrompt` assembles the
+exact prompt for runtime facts you supply without touching any session (deterministic,
+`transcript` always `[]`, one hash per template slot in `slot_hashes`); its `config_version` must
+be the agent's **current** one or the answer is `409 config_version_changed`. There is
+deliberately no `upgradeSystemPrompt`: the engine's upgrade route is 404 through the gateway, so
+the pin only moves at create time - do not hand-build that request expecting better.
+
+## Artifacts
+
+```ts
+listArtifacts(agentId: string, opts?: { page?: number; limit?: number; sessionId?: string; sourcePath?: string; createdBefore?: string }): Promise<ArtifactPage>
+getArtifact(agentId: string, artifactId: string): Promise<ArtifactRecord>
+downloadArtifact(agentId: string, artifactId: string): Promise<{ artifact_id?: string; url?: string }>  // 409 artifact_not_ready before finalization
+deleteArtifact(agentId: string, artifactId: string): Promise<ArtifactRecord>
+```
+
+Artifacts are published by the agent's own in-loop `artifact_publish` tool during a turn; there is
+**no API to publish one from your code** - these methods manage what the agent produced. Every
+artifact route demands `owner_uid`+`org_id` query selectors that the gateway does not inject; the
+SDK derives both from the agent's own projection and caches them per agent, so the first artifact
+call on an agent costs one extra GET - do not add the selectors yourself. `listArtifacts` returns
+the page verbatim (`{ artifacts, page, has_more }`): unlike `listEvents`, **this list tells you
+when it truncated** - read `has_more`. The access `url` is a revocable bearer capability; treat it
+as a secret and re-mint with `downloadArtifact` rather than storing it long-term.
 
 ## Environments
 
