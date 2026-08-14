@@ -1,6 +1,6 @@
 ---
 name: zooclaw-managed-agents
-description: Build on ZooClaw Managed Agents - hosted AI agents that run in a managed sandbox, driven from your own code through the `@zooclaw-agents/sdk` TypeScript SDK. Use this skill whenever ZooClaw is mentioned; on any `zct_` key, `agt_` or `skl_` id, `ZOOCLAW_API_KEY`, `ZOOCLAW_BASE_URL`, `@zooclaw-agents/sdk`, `createZooclawClient`, `waitUntilRunning`, `putAgentSkill`, or the ZooClaw App Kit; on the errors `agent_not_running`, `environment_locked`, `session_archived`, `exec_requires_agent_scope`, or `environment_not_ready`; and when someone wants a ZooClaw agent they built locally, with its skills, hosted somewhere it can serve real users. Read it before writing any ZooClaw call - ported code compiles and then fails at runtime. This is NOT Anthropic's Claude Managed Agents (`@anthropic-ai/sdk`, `client.beta.agents`), which is a different product this skill does not cover.
+description: Build on ZooClaw Managed Agents - hosted AI agents that run in a managed sandbox, driven from your own code through the `@zooclaw-agents/sdk` TypeScript SDK. Use this skill whenever ZooClaw is mentioned; on any `zct_` key, `agt_` or `skl_` id, `ZOOCLAW_API_KEY`, `ZOOCLAW_BASE_URL`, `@zooclaw-agents/sdk`, `createZooclawClient`, `waitUntilRunning`, `putAgentSkill`, or the ZooClaw App Kit; on the errors `agent_not_running`, `environment_locked`, `session_archived`, `exec_requires_agent_scope`, or `environment_not_ready`; and when someone wants a ZooClaw agent they built locally, with its skills, hosted somewhere it can serve real users. Read it before writing any ZooClaw call - code that merely looks right here compiles and then fails at runtime.
 license: MIT
 ---
 
@@ -31,26 +31,36 @@ after the first integration test).
 
 ## Before you start
 
-**Confirm this is ZooClaw.** The API is shaped like Claude Managed Agents and the two are easy to
-conflate. If the file you are about to edit imports `@anthropic-ai/sdk` and calls
-`client.beta.agents` / `client.beta.sessions`, that is Anthropic's product, not this one - stop and
-ask which platform they mean rather than mixing the two SDKs in one file.
-
 **The package is `@zooclaw-agents/sdk`.** Not `@zooclaw/sdk`, not `@zooclaw/agents-sdk`. Those names
 have never existed on npm, and guessing one sends the user to a 404.
 
 **The key.** One credential authenticates everything: an organization service token that starts with
-`zct_`, passed as `apiKey`. An organization administrator issues it - there is no self-serve signup
-page, so if the user does not have one yet, that is a person to ask, not an endpoint to call. It
-authenticates the whole organization with full read and write over every agent in it, so it belongs
-on a server the user controls and never in a browser bundle, a mobile app, or a build-time inlined
-variable.
+`zct_`, passed as `apiKey`. It authenticates the whole organization with full read and write over
+every agent in it, so it belongs on a server the user controls and never in a browser bundle, a
+mobile app, or a build-time inlined variable.
 
 ```bash
 export ZOOCLAW_API_KEY='zct_...'
 ```
 
-`listModels()` is the cheapest proof a key works: it touches no agent and creates nothing.
+**No key yet? Walk the user through getting one - do not guess a signup URL.** Keys are
+self-served in the ZooClaw App:
+
+1. First check what they have: is `ZOOCLAW_API_KEY` set? If a key exists, `listModels()` is the
+   cheapest proof it works - it touches no agent and creates nothing. A `401` with
+   `service_token.invalid` means the key is wrong or revoked, not that the route moved.
+2. If there is no key, send them to the **ZooClaw App → Settings → API Keys → Create API Key**.
+   Tell them to name it after where it will live (`staging-backend`, not `test`), and to copy the
+   secret immediately - **it is shown exactly once** and cannot be retrieved again.
+3. Who can do this: on a personal organization, anyone; on an enterprise organization the tab
+   requires the **admin** role. If they cannot see the tab, the next step is asking their org
+   admin for a key, not hunting for another endpoint - there is none, and key management has no
+   API on purpose.
+4. When they come back with the key, put it in `ZOOCLAW_API_KEY` and re-run the `listModels()`
+   check before writing any other code.
+
+A leaked or lost key is handled on the same App page: **Rotate** kills the old secret immediately
+and shows a new one once. Never echo the key back in code, logs, or chat.
 
 ## Which path
 
@@ -245,8 +255,8 @@ Uploading a local skill directory and attaching it is the core of
 
 | The user wants to | Read |
 |---|---|
-| A signature, a return shape, or a method you are not certain exists | `references/typescript-sdk.md` - all 44 client methods by area |
-| Cron schedules, running a command in the sandbox (`exec`), `wake`, environments, or approvals | `references/typescript-sdk.md` - these surfaces appear **nowhere else in this skill**, and each has a trap worth a debugging session (schedule reads and writes speak different vocabularies; `exec` needs an agent-scope sandbox) |
+| A signature, a return shape, or a method you are not certain exists | `references/typescript-sdk.md` - all 50 client methods by area |
+| Cron schedules (including the `payload.outcome` gate), running a command in the sandbox (`exec`), `wake`, environments, approvals, artifacts, or the system prompt | `references/typescript-sdk.md` - these surfaces appear **nowhere else in this skill**, and each has a trap worth a debugging session (schedule reads and writes speak different vocabularies; `exec` needs an agent-scope sandbox; artifact routes need selectors the SDK derives for you) |
 | To consume the stream, read history, reconnect, or render tool calls | `references/events-and-streaming.md` |
 | To host an agent they built locally, with its skills | `references/deploy-your-agent.md` - **follow it in order, do not summarize it** |
 | Something you suspect is not supported (custom tools, vaults, webhooks, file uploads, approvals, memory) | `references/not-supported.md` - **read before designing**, each entry names the real alternative |

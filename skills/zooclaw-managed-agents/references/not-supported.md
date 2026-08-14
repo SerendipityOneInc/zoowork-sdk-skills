@@ -136,11 +136,13 @@ repository into the workspace so the agent can read the code.
 
 **What actually happens.** `createSession(agentId, input)` accepts exactly two fields:
 `initial_events` and `metadata`. There is no `resources[]`, no `mount_path`, no
-`github_repository`, no upload endpoint on a session. The client exposes no file or artifact route
-at all, and no such route has been exercised against a live deployment, so treat fetching bytes
-back out as unavailable rather than assuming a path exists. `attachment.created` does exist in the
-event vocabulary, so you may observe one, but the SDK offers nothing that fetches what it refers
-to.
+`github_repository`, no upload endpoint on a session. The files routes have no wired backend, so
+treat pushing bytes in as unavailable. Getting bytes OUT has one real path: when the agent itself
+publishes a workspace file with its `artifact_publish` tool, `listArtifacts` /
+`downloadArtifact` hand you a capability URL for it (see `references/typescript-sdk.md` -
+Artifacts) - but that is the agent deciding to publish, not you attaching an input.
+`attachment.created` does exist in the event vocabulary, so you may observe one, but the SDK
+offers nothing that fetches what it refers to.
 
 **What to do instead.** For anything text-sized, put the content in the conversation: a
 `user.message` with the text, or a `system.message` when it is reference material rather than
@@ -158,23 +160,25 @@ problem above. Treat it as an experiment to run, not a recipe to hand over.
 
 ---
 
-## Outcome definitions and rubric grading
+## Outcome definitions on interactive sessions
 
-**What you would build.** Declare acceptance criteria on the session, let the agent iterate until
-it meets them, and read a grade off the result. On other platforms this is a `define_outcome` event
-plus a grader.
+**What you would build.** Declare acceptance criteria on a session, let the agent iterate until it
+meets them, and read a grade off the result.
 
-**What actually happens.** Neither half exists. `define_outcome` is not one of the four write-side
-event types, so `initial_events` will not carry it; there is no rubric field, no grader, and no
-score in any event payload. The whole category of "iterate until it passes" and "automatically
-scored agent eval harness" has no platform support.
+**What actually happens.** Not on a session. There is no outcome event among the four write-side
+types, no rubric field on `createSession`, and no score in any session event payload.
 
-**What to do instead.** Grade in your own process, where you can also version the rubric. You have
-the material: `listAllEvents(agentId, sessionId)` returns every durable event without the silent
-500-event truncation that `listEvents` has, and `getSession(agentId, sessionId, { history: true })`
-returns the at-rest transcript, which is the one surface that also carries token usage and the
-model that actually served the turn. Run your own judge over that, and post another `user.message`
-when the answer falls short. Each iteration is one turn, and the loop lives in your code.
+**What to do instead - unattended cron work has the real thing.** A schedule's `payload.outcome`
+(or an agent-level default at `resource.outcome`) carries a `description`, a `command` or `rubric`
+evaluator, `maxIterations` (1-5) and a `publish` policy; the run iterates against it internally
+and, under the default `publish: 'after_satisfied'`, announces nothing that failed evaluation. See
+`references/typescript-sdk.md` - Schedules. **For interactive sessions**, grade in your own
+process, where you can also version the rubric. You have the material:
+`listAllEvents(agentId, sessionId)` returns every durable event without the silent 500-event
+truncation that `listEvents` has, and `getSession(agentId, sessionId, { history: true })` returns
+the at-rest transcript, which is the one surface that also carries token usage and the model that
+actually served the turn. Run your own judge over that, and post another `user.message` when the
+answer falls short. Each iteration is one turn, and the loop lives in your code.
 
 ---
 
@@ -315,9 +319,9 @@ create-time decision because the Environment pin freezes on first sandbox creati
 | Rich environment builds | `config` takes exactly `packages` (apt/npm/pip only), `files`, `build`, `networking`; anything else is `400 invalid_environment_config`. No secrets, no runtime env vars, no start hooks | Install through `packages` and `build.script`; fetch anything secret at run time from your own service |
 | Schedule pause / unpause / archive | No such routes | `updateSchedule(agentId, scheduleId, { enabled: false })` is the off switch, `deleteSchedule` removes it. The `state.paused` field on list rows is a different thing and is unrelated to `enabled` |
 | Schedule cleanup on agent delete | Schedules outlive their agent; `stopAgent` and `deleteAgent` leave them running | `listSchedules` then `deleteSchedule` for each, before `deleteAgent` |
-| An artifacts or files REST surface | The client exposes no file or artifact route and none has been exercised; note that an unknown id also answers `404 service_api.not_found`, so a 404 on its own does not prove a route is absent | Move content as text in the conversation, or bake it into an Environment at build time |
+| A files REST surface, or publishing an artifact from your code | The files routes have no wired backend, and publishing stays in-loop: only the agent's own `artifact_publish` tool creates an artifact | Move content as text in the conversation, or bake it into an Environment at build time. What the agent DID publish is manageable: `listArtifacts` / `getArtifact` / `downloadArtifact` / `deleteArtifact` are on the client as of 0.0.6 - see `references/typescript-sdk.md` - Artifacts |
 | Scoped or read-only API keys | A `zct_` token is not scopeable: it reads and writes every agent in the organization, and this API exposes no scoping or lifetime controls | Keep it server-side only, behind your own authorization layer. Separate organizations are the only hard boundary |
-| A documented key rotation flow | Keys are issued and revoked by an organization administrator; there is no documented rotation procedure | Issue the new key, cut over, then have the administrator revoke the old one - and build for the key being a value you can change without a redeploy |
+| Key rotation from your code | Key management has no API, deliberately | The ZooClaw App has it: **Settings -> API Keys** creates, rotates and revokes keys (personal orgs: anyone; enterprise orgs: admins). Rotate shows the new secret exactly once. Build for the key being a value you can change without a redeploy |
 
 ---
 
