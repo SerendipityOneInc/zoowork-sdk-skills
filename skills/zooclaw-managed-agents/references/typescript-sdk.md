@@ -436,7 +436,8 @@ interface EnvironmentConfig {
 ```
 
 Files land under `/opt/zooclaw/environment/`, and a top-level `bin/*` marked executable is linked
-into `/usr/local/bin`. No secrets, no runtime env vars, no start hooks. **Poll
+into `/usr/local/bin`. No user-defined secrets, env vars, or start hooks (the platform injects
+its own runtime credentials for built-in skills; that layer is internal and not extensible). **Poll
 `getEnvironmentVersion` and read `status`, not `state`**: there is no `state` field on a version, so
 a loop written against one compares `undefined` to `'ready'` forever and never terminates. Builds
 walk `queued -> submitting -> building -> verifying -> ready`, and any phase can land in `failed`
