@@ -1,6 +1,6 @@
 # TypeScript SDK surface
 
-All 50 methods on `ZooclawClient`, grouped by area, signatures exactly as `src/client.ts` declares
+All 51 methods on `ZooclawClient`, grouped by area, signatures exactly as `src/client.ts` declares
 them. The package is `@zooclaw-agents/sdk` - ESM only (no CJS `require` condition, no subpath
 exports), zero runtime dependencies, `engines.node >= 20`, shipping `dist/index.d.ts`, which is the
 authority over anything here. `SKILL.md` has the mandatory flow; this file is for looking up a
@@ -363,6 +363,10 @@ to do instead, is in `references/not-supported.md` - Approvals.
 ```ts
 getSystemPrompt(agentId: string): Promise<SystemPromptInfo>
 previewSystemPrompt(agentId: string, input: SystemPromptPreviewInput): Promise<SystemPromptPreview>
+upgradeSystemPrompt(
+  agentId: string,
+  input: { expected_config_version: number; template_version?: number },
+): Promise<SystemPromptUpgrade>
 
 export type SystemPromptDeclaration =
   | { source: 'platform'; version: number }
@@ -371,13 +375,17 @@ export type SystemPromptDeclaration =
 
 A fresh create pins the platform template version active at that moment - the declaration reads
 back as `{ source: 'platform', version: N }` - and the pin **never follows a later platform
-activation**: ordinary PUTs, skill changes and rerenders keep it. On PUT the `system_prompt`
-section is replace-on-write, like `tool_policy`, not merged. `previewSystemPrompt` assembles the
-exact prompt for runtime facts you supply without touching any session (deterministic,
-`transcript` always `[]`, one hash per template slot in `slot_hashes`); its `config_version` must
-be the agent's **current** one or the answer is `409 config_version_changed`. There is
-deliberately no `upgradeSystemPrompt`: the engine's upgrade route is 404 through the gateway, so
-the pin only moves at create time - do not hand-build that request expecting better.
+activation on its own**: ordinary PUTs, skill changes and rerenders keep it. Moving it is
+exactly one call, `upgradeSystemPrompt`: `expected_config_version` is a required CAS (stale
+answers `409 config_version_changed` - read the projection fresh, then upgrade), omitting
+`template_version` upgrades to the currently active platform version, and the 200 receipt
+carries the NEW `config_version` because an upgrade is a config write like any other. It needs
+a gateway with fix #3387 (2026-08-14); an older deployment answers a gateway 404 on this
+route's `{id}:verb` grammar. On PUT the `system_prompt` section is replace-on-write, like
+`tool_policy`, not merged. `previewSystemPrompt` assembles the exact prompt for runtime facts
+you supply without touching any session (deterministic, `transcript` always `[]`, one hash per
+template slot in `slot_hashes`); its `config_version` must be the agent's **current** one or
+the answer is `409 config_version_changed`.
 
 ## Artifacts
 
@@ -428,7 +436,8 @@ interface EnvironmentConfig {
 ```
 
 Files land under `/opt/zooclaw/environment/`, and a top-level `bin/*` marked executable is linked
-into `/usr/local/bin`. No secrets, no runtime env vars, no start hooks. **Poll
+into `/usr/local/bin`. No user-defined secrets, env vars, or start hooks (the platform injects
+its own runtime credentials for built-in skills; that layer is internal and not extensible). **Poll
 `getEnvironmentVersion` and read `status`, not `state`**: there is no `state` field on a version, so
 a loop written against one compares `undefined` to `'ready'` forever and never terminates. Builds
 walk `queued -> submitting -> building -> verifying -> ready`, and any phase can land in `failed`

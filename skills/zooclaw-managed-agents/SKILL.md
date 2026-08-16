@@ -222,8 +222,12 @@ the agent's sandbox and read by the model when it judges the skill relevant. The
 session-level skill list and no API to invoke one; attaching it changes what the agent knows, not
 what you can call.
 
-Three things surprise everyone:
+Four things surprise everyone:
 
+- **Built-in skills that call platform services (speech, video, connectors) need zero setup** -
+  the platform injects the credentials they use into the sandbox when it is created. Those env
+  vars are platform-internal: a skill you write must not read them (no compatibility promise).
+  Anything secret in your own skill belongs on your own service, called over the network.
 - **A brand-new agent already has the global catalog attached** (document skills like `docx`,
   `pptx`, `xlsx`, `pdf` among them). You do not install those, and `putAgentSkill()` against a
   `global` entry answers **404** - it is already attached, you just cannot control it. Do not retry
@@ -255,7 +259,7 @@ Uploading a local skill directory and attaching it is the core of
 
 | The user wants to | Read |
 |---|---|
-| A signature, a return shape, or a method you are not certain exists | `references/typescript-sdk.md` - all 50 client methods by area |
+| A signature, a return shape, or a method you are not certain exists | `references/typescript-sdk.md` - all 51 client methods by area |
 | Cron schedules (including the `payload.outcome` gate), running a command in the sandbox (`exec`), `wake`, environments, approvals, artifacts, or the system prompt | `references/typescript-sdk.md` - these surfaces appear **nowhere else in this skill**, and each has a trap worth a debugging session (schedule reads and writes speak different vocabularies; `exec` needs an agent-scope sandbox; artifact routes need selectors the SDK derives for you) |
 | To consume the stream, read history, reconnect, or render tool calls | `references/events-and-streaming.md` |
 | To host an agent they built locally, with its skills | `references/deploy-your-agent.md` - **follow it in order, do not summarize it** |
