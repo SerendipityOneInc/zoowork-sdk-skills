@@ -6,17 +6,15 @@ license: MIT
 
 # Building on ZooClaw Managed Agents
 
-**The five that break code which compiles. If you read nothing else here, read these.**
+**The four that break code which compiles. If you read nothing else here, read these.**
 
 1. `createAgent` leaves the agent **stopped**. Call `startAgent(id)` then `waitUntilRunning(id)`, or
    every session call answers `409 agent_not_running`.
 2. Every session method takes **`agentId` first**: `createSession(agentId, ...)`,
    `postEvents(agentId, sessionId, ...)`, `streamEvents(agentId, sessionId, ...)`.
-3. Set **`onboarding: false`** on create, or the agent's first turn interviews you about its own
-   persona instead of answering.
-4. Reply text comes from `agent.assistant` via **`assistantText(ev)`** - never from `chat.delta`,
+3. Reply text comes from `agent.assistant` via **`assistantText(ev)`** - never from `chat.delta`,
    which is snapshot-replace and never reaches you anyway.
-5. The stream **does not close at turn end**. `break` on `isRunFinished(ev)` or you block until the
+4. The stream **does not close at turn end**. `break` on `isRunFinished(ev)` or you block until the
    server's idle timeout.
 
 ZooClaw hosts the agent loop and the sandbox its tools run in. You create an agent (a persistent,
@@ -120,8 +118,7 @@ const models = await zc.listModels()
 const model = models.find((m) => m.model.includes('sonnet'))?.model ?? models[0]?.model
 if (!model) throw new Error('no models available to this key')
 
-// 2. Create. `ownership` is required by the schema and then overwritten by the gateway with the
-//    tenant your key belongs to - send placeholders, do not go hunting for real ids.
+// 2. Create. Ownership comes from your API key - the SDK handles it, nothing to pass.
 const created = await zc.createAgent(
   {
     resource: {
@@ -129,11 +126,7 @@ const created = await zc.createAgent(
       model: { primary: model },
       // persona.docs is an ARRAY of documents, not a filename-keyed object.
       persona: { docs: [{ name: 'AGENTS.md', content: 'You answer questions about our billing policy.' }] },
-      // Set this on every API-driven agent. Without it the agent spends its first turn
-      // interviewing you about its own persona instead of answering. Create-time only.
-      onboarding: false,
     },
-    ownership: { owner_uid: 'placeholder', org_id: 'placeholder' },
   },
   // A stable idempotency key, not a per-run uuid. Two agents means two sandboxes and two
   // workspaces, and nothing in the product cleans the spare one up.
@@ -277,9 +270,8 @@ either over recalling a shape.
 - **There is no custom tool type and no tool-result event.** The agent cannot call back into your
   process mid-turn. `references/not-supported.md` - Client-executed custom tools has the two real
   alternatives (a remote MCP server, or doing the work between turns).
-- **`putCredential()` / `listCredentials()` are dead for API-key callers.** Both are `@deprecated`
-  and answer 404 through the gateway; the platform seeds model credentials itself, and there is no
-  store for your end users' secrets.
+- **There is no credential API.** The platform seeds model credentials itself at create, and there
+  is no store for your end users' secrets — those belong on your own service.
 - **An Environment choice locks permanently** on first sandbox creation. `stopAgent()` does not
   release it, and a later change answers `409 environment_locked`. Decide before the agent's first
   turn or not at all.
