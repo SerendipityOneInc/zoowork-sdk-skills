@@ -222,12 +222,16 @@ the agent's sandbox and read by the model when it judges the skill relevant. The
 session-level skill list and no API to invoke one; attaching it changes what the agent knows, not
 what you can call.
 
-Four things surprise everyone:
+Five things surprise everyone:
 
 - **Built-in skills that call platform services (speech, video, connectors) need zero setup** -
   the platform injects the credentials they use into the sandbox when it is created. Those env
   vars are platform-internal: a skill you write must not read them (no compatibility promise).
   Anything secret in your own skill belongs on your own service, called over the network.
+- **Do not pass `warm: true` on create (for now).** The pre-warm races that credential
+  injection: the sandbox can be born before the built-in-skill credentials land, and its env
+  never refreshes - those skills come out permanently broken on that sandbox (verified
+  2026-08-16). Recovery is recreating the agent without `warm`.
 - **A brand-new agent already has the global catalog attached** (document skills like `docx`,
   `pptx`, `xlsx`, `pdf` among them). You do not install those, and `putAgentSkill()` against a
   `global` entry answers **404** - it is already attached, you just cannot control it. Do not retry
