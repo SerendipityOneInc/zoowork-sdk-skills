@@ -54,7 +54,7 @@ Model ids are prefixed, e.g. `litellm/claude-sonnet-5`. Both wire shapes (a bare
 A stored, versioned configuration. Create once, keep the `agent_id`, reference by id forever.
 
 ```ts
-createAgent(input: { resource: AgentResource; ownership: Ownership }, idempotencyKey?: string): Promise<AgentRecord>
+createAgent(input: { resource: AgentResource; ownership?: Ownership }, idempotencyKey?: string): Promise<AgentRecord>
 listAgents(opts?: { labels?: Record<string, string>; page?: number }): Promise<AgentRecord[]>
 getAgent(agentId: string): Promise<AgentRecord>
 updateAgent(agentId: string, sections: Record<string, unknown>): Promise<AgentRecord>  // per-section PUT; bumps config_version on every call
@@ -64,8 +64,7 @@ stopAgent(agentId: string): Promise<{ warnings: string[] }>     // does not clea
 waitUntilRunning(agentId: string, opts?: { timeoutMs?: number; intervalMs?: number; signal?: AbortSignal }): Promise<AgentRecord>
 ```
 
-`ownership` is required by the schema and then rewritten by the gateway to your key's tenant - send
-`{ owner_uid: 'placeholder', org_id: 'placeholder' }` rather than hunting for real ids. **The create
+`ownership` can be omitted - the gateway derives your key's tenant on its own. **The create
 receipt and the read projection are different documents under one `AgentRecord` type:**
 
 | | `createAgent` (receipt) | `getAgent` / `updateAgent` (projection) |
@@ -82,12 +81,8 @@ your own section changed.
 
 **`updateAgent` merges per section.** `sections` is the declared config keyed by section, so sending
 only `model` leaves `persona`, `labels`, `mcp` and the rest untouched. Within a section the value is
-replaced, not merged, so a partial `persona` drops the docs you left out. `AgentResource.warm` is
-**create-only**: it pre-warms the agent-scope sandbox so the first tool call skips the cold start,
-is never written to the declared config, and a PUT carrying it is a 400 (under
-`sandbox.scope: 'session'` it is ignored, and the receipt carries
-`warnings: ['warm-ignored-session-scope']`). The rest of `AgentResource` is optional except
-`name: string`:
+replaced, not merged, so a partial `persona` drops the docs you left out. All of `AgentResource` is
+optional except `name: string`:
 
 | Field | Type | Note |
 |---|---|---|
@@ -99,7 +94,11 @@ is never written to the declared config, and a PUT carrying it is a 400 (under
 | `mcp` | `McpServerDeclaration[]` | remote HTTP only; the server `name` must contain no underscore |
 | `sandbox` | `{ scope: 'agent' \| 'session' }` | `exec` needs `agent` |
 | `environment_id`, `environment_version` | `string`, `number` | pins permanently on first sandbox creation |
-| `onboarding` | `boolean` | set `false` for API-driven agents, or the first turn is an interview |
+
+The onboarding interview is always skipped: the SDK sends `onboarding: false` on every create, so
+the agent answers your first message directly. Ownership is likewise handled for you - the gateway
+derives it from your API key, and `createAgent`'s `ownership` input is only for gateway-less
+engine access.
 
 **`listAgents` scope is `owner_uid` AND `org_id`**, both injected from your key, so an agent a
 colleague created in the same org is fetchable by `getAgent(id)` and never appears in the list. An
@@ -453,22 +452,13 @@ SDK sends `{ resource: { config } }`, mirroring create, on that symmetry alone, 
 depending on it. Versions are immutable: a retry after a failed build retries that version and keeps
 its attempt log.
 
-## Deprecated: the credential pair
+## Credentials
 
-```ts
-/** @deprecated 404 for API-key callers. */
-putCredential(agentId: string, app: string, body: Record<string, unknown>): Promise<void>
-/** @deprecated 404 for API-key callers. */
-listCredentials(agentId: string): Promise<{ app: string; ref: string }[]>
-```
-
-Both are still on the interface and both answer 404 through the gateway. The gateway seeds model
-credentials itself, so there is nothing for an API-key caller to store; they remain for
-deployment-internal callers only. Do not design around them, and do not read the 404 as a bug. One
-consequence: `McpServerDeclaration.credential` names a credential slug that is accepted and stored
-on the agent, but the endpoint that would hold the secret it points at is exactly `putCredential`,
-so an authenticated MCP server cannot be made to work - declare public servers only. See
-`references/not-supported.md` - Credentials and vaults.
+There is no credential API on the client: the gateway seeds model credentials itself at create, so
+there is nothing for an API-key caller to store. One consequence: `McpServerDeclaration.credential`
+names a credential slug that is accepted and stored on the agent, but there is no endpoint to put
+the secret it points at, so an authenticated MCP server cannot be made to work - declare public
+servers only. See `references/not-supported.md` - Credentials and vaults.
 
 ## Errors
 

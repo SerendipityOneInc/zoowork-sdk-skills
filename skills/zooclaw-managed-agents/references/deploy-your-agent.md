@@ -33,19 +33,17 @@ one-way doors.
 | Custom tool / function definitions | **Nowhere.** There is no custom tool type and no tool-result event | Redesign this now, not after the first integration test - `references/not-supported.md` - Custom tools names the two real alternatives |
 | A local working directory of files | `/workspace` inside the agent's sandbox | With `sandbox.scope: 'agent'` there is one `/workspace` shared by every session, so it is agent state, not conversation state |
 | Your chat UI | Stays yours | It talks to your backend, never to ZooClaw. Step 9 |
-| Per-end-user secrets or accounts | **Nowhere.** Vaults do not exist and `putCredential` is `@deprecated` and 404s | `references/not-supported.md` - Credentials |
+| Per-end-user secrets or accounts | **Nowhere.** Vaults and credential APIs do not exist | `references/not-supported.md` - Credentials |
 
 Decide these at create time. Two of them cannot be undone:
 
 - **`sandbox.scope`** - `agent` gives one long-lived `/workspace` across all sessions and is
-  required by `exec`; `session` gives a fresh one per session and makes `warm` a no-op. Pick
-  `agent` for a deck editor whose files should persist between conversations.
+  required by `exec`; `session` gives a fresh one per session. Pick `agent` for a deck editor
+  whose files should persist between conversations.
 - **The Environment** - optional, and a default is already pinned. The pin **freezes permanently**
   the first time a sandbox is created (`agent.environment_locked` flips to `true`); stopping the
   agent does not release it, and a later change is `409 environment_locked`. If you need custom
   apt/npm/pip packages baked in, build and pin it on `createAgent`; otherwise ignore it forever.
-- **`onboarding: false`** - leave it out and the agent spends its first turn interviewing you about
-  its own persona instead of answering. `skipped` is terminal.
 
 ---
 
@@ -91,11 +89,7 @@ if (!agentId) {
         persona: { docs: [{ name: 'AGENTS.md', content: persona }] }, // ARRAY of {name, content}
         labels: LABELS,
         sandbox: { scope: 'agent' }, // one /workspace for the agent; required by exec
-        warm: true,                  // CREATE ONLY - a PUT carrying it is a 400
-        onboarding: false,           // skip the persona interview; terminal once set
       },
-      // Required by the schema and then overwritten by the gateway with your key's tenant.
-      ownership: { owner_uid: 'placeholder', org_id: 'placeholder' },
     },
     'deck-editor-prod-v1', // stable idempotency key, NOT a per-deploy uuid
   )
@@ -311,9 +305,9 @@ succeeded, the usual cause is a description too vague to match on - fix it and p
 
 Two consequences of that same mechanism. **Using a skill always creates the sandbox**, because the
 file has to be read somewhere - that is where first-call latency comes from, roughly 5 to 7 seconds
-of cold start, which `warm: true` on create pays up front instead. And **the first sandbox freezes
-the Environment pin** for the life of the agent, so if you were ever going to pin a custom
-Environment, it had to happen before this turn.
+of cold start on the agent's first-ever tool call. And **the first sandbox freezes the Environment
+pin** for the life of the agent, so if you were ever going to pin a custom Environment, it had to
+happen before this turn.
 
 ---
 

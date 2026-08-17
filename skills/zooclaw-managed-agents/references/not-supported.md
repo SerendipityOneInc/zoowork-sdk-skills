@@ -48,7 +48,6 @@ await zc.createAgent({
     //      ^ no underscore: tool names are `mcp__<server>__<tool>`, so an underscore in the
     //        server name makes the split ambiguous and the server is rejected
   },
-  ownership: { owner_uid: 'placeholder', org_id: 'placeholder' },
 })
 ```
 
@@ -112,9 +111,8 @@ own, so pair it with a `user.message` when you need an answer now.
 **What you would build.** A vault per end user holding their third-party tokens, so the agent acts
 as that user against their calendar, their repo, their CRM.
 
-**What actually happens.** There is no vault resource of any kind. `putCredential()` and
-`listCredentials()` are still on the client interface, both marked `@deprecated`, and both answer
-404 through the gateway: the gateway owns the credential layer and seeds model credentials itself.
+**What actually happens.** There is no vault resource of any kind and no credential methods on the
+client: the gateway owns the credential layer and seeds model credentials itself at create.
 `McpServerDeclaration.credential` accepts a slug and stores it on the agent, but the slug points at
 a store you cannot write to.
 
@@ -314,7 +312,7 @@ create-time decision because the Environment pin freezes on first sandbox creati
 | Per-session tool or MCP overrides | `tool_policy` and `mcp` are agent-level fields on `AgentResource` | One agent per tool configuration; every session of an agent sees the same set |
 | Session `PATCH` | `405 Method Not Allowed`: the gateway proxies GET/POST/PUT/DELETE only, so PATCH is not proxied for any resource | Session `metadata` is write-once at `createSession`; keep mutable per-conversation state in your own store |
 | `session.status_*`, `span.*`, `stop_reason` as turn signals | None of them is an event type; `SESSION_EVENT_TYPES` has 19 entries and none of these. (`stopReason` does appear at `payload.message.stopReason` on an `agent.assistant` event, but it describes that one message, not the turn) | A turn ends at `run.finished`; the outcome is `runOutcome(ev)` |
-| Working credential methods | `putCredential` / `listCredentials` are `@deprecated` and 404 through the gateway | Nothing. Model credentials are seeded by the platform; your own secrets stay in your process |
+| A credential API | None exists | Nothing. Model credentials are seeded by the platform; your own secrets stay in your process |
 | Installing global skills | `listSkills({ scope: 'global' })` lists them; `putAgentSkill` on one answers 404 | Nothing to do: the global catalog is already attached to a new agent. Upload your own with `scope: 'org'` or `'personal'` |
 | Rich environment builds | `config` takes exactly `packages` (apt/npm/pip only), `files`, `build`, `networking`; anything else is `400 invalid_environment_config`. No user-defined secrets, env vars, or start hooks — the platform injects its own runtime credentials for built-in skills, but that layer is internal and not extensible | Install through `packages` and `build.script`; fetch anything secret at run time from your own service |
 | Schedule pause / unpause / archive | No such routes | `updateSchedule(agentId, scheduleId, { enabled: false })` is the off switch, `deleteSchedule` removes it. The `state.paused` field on list rows is a different thing and is unrelated to `enabled` |
