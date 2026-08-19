@@ -11,35 +11,33 @@ latency, not shape. Every call below needs an `agt_` id whose `status.desired_st
 ## The event model
 
 The event log is per session. Every event carries a `seq` that is monotonic within that session and
-never reused. `seq` is the only cursor in this API: it drives history paging, and it drives stream
-resume. Persist the last one you saw next to your session id - it stays valid across process
-restarts, so a worker that crashes mid-turn picks the turn back up exactly where it stopped.
+never reused (gaps are normal - the sequence is strictly increasing, not contiguous). The log is
+**bidirectional**: your own inputs echo back as `user.message`, `user.interrupt`,
+`user.tool_confirmation` and `system.message` alongside the engine's output, so the whole
+conversation reconstructs from this one surface. Pagination and stream resume run on cursors: a
+list page's `nextCursor`, or the `cursor` token on each streamed event. Persist the last cursor you
+saw next to your session id - it stays valid across process restarts, so a worker that crashes
+mid-turn picks the turn back up exactly where it stopped.
 
-The same event arrives in two different spellings depending on where you read it:
-
-| Field | REST `GET .../events` | SSE `GET .../events/stream` |
-|---|---|---|
-| sequence | `seq` | `seq`, and also the SSE `id:` line |
-| event type | `event_type` | `eventType` |
-| run | `run_id` | `runId` |
-| turn | `turn` | `turn` |
-| body | `payload` | `payload` |
-| timestamp | `created_at` | `createdAt` |
-| extras | - | `version`, `engine`, `sessionId` |
-
-REST is snake_case, SSE is camelCase, and **neither carries a top-level `type`**. The SDK absorbs
-this once in `normalizeEvent`, so `listEvents`, `listAllEvents` and `streamEvents` all hand you the
-same object and you switch on a single field:
+The wire spells the same event differently per lane: on the default unified lane both transports
+send one snake_case object (`event_type`, `run_id`, `processed_at`, `created_at`) and the SSE
+`id:` line carries the resume token; on the deprecated `after` lane, REST stays snake_case while
+SSE frames arrive camelCase. **No shape carries a top-level `type`.** The SDK absorbs all of it in
+`normalizeEvent`, so `listEvents`, `listAllEvents` and `streamEvents` all hand you the same object
+and you switch on a single field:
 
 ```ts
 interface SessionEvent {
-  /** Durable per-session sequence. Use as the `after` cursor when resuming. */
+  /** Durable per-session sequence: strictly increasing, not necessarily contiguous. */
   seq: number
-  eventType: SessionEventType | string
+  eventType: SessionEventType | PublicInputEventType | string
   payload: Record<string, unknown>
-  runId?: string
+  runId?: string          // absent on your echoed inputs
   turn?: number
   createdAt?: string
+  id?: string             // event id, when the server sends one
+  processedAt?: string | null  // inputs only: null while queued, a timestamp once consumed
+  cursor?: string         // resume token, present on streamed events
 }
 ```
 
@@ -67,8 +65,9 @@ that is a property of one message, not a turn signal.
 ## The vocabulary
 
 `SESSION_EVENT_TYPES` is exported as a runtime array of exactly these 19 entries, in this order.
-The `types=` filter on the history read accepts only members of this list; anything else is
-`400 invalid_request`.
+Your own inputs additionally echo back as the four `PUBLIC_INPUT_EVENT_TYPES` (`user.message`,
+`user.interrupt`, `user.tool_confirmation`, `system.message`) - see the table's last rows. The
+`types=` filter on the history read accepts both lists; anything else is `400 invalid_request`.
 
 | Type | What it means | Act on it? |
 |---|---|---|
@@ -91,16 +90,20 @@ The `types=` filter on the history read accepts only members of this list; anyth
 | `agent.error` | An error occurred inside the turn. `errorMessage`, sometimes `kind` and `server`. | Yes - log it, but it is not the verdict |
 | `attachment.created` | A tool produced a file. `source`, `toolName`, `toolCallId`, storage refs. | Yes, if you surface files |
 | `message.outbound` | The agent sent a proactive message (message tool, schedule announce, heartbeat) instead of replying in-session. | Only for proactive agents |
+| `user.message` (echo) | Your own message, echoed into the log. `payload.content` is a block array (`messageText` reads it); `processedAt` is `null` until the agent consumes it. | Yes - the user side of the chat |
+| `user.interrupt` / `user.tool_confirmation` / `system.message` (echo) | Your other inputs, echoed with their payloads. | Optional - render if you show them |
 
-Six carry real integrations: `run.started`, `run.finished`, `agent.assistant`, `agent.thinking`,
-`agent.tool` and `agent.error`. Handling only those renders a correct chat.
+Seven carry real integrations: `run.started`, `run.finished`, `agent.assistant`, `agent.thinking`,
+`agent.tool`, `agent.error` and the echoed `user.message`. Handling only those renders a correct
+two-sided chat.
 
 **Payload fields for the rarer types are a guide, not a contract.** The arc observed repeatedly on
 live sessions is `run.started`, `agent.lifecycle`, `agent.item`, `agent.thinking`,
 `agent.assistant`, `agent.tool` (start then end), `agent.lifecycle`, `run.finished`. `agent.approval`,
 `agent.command_output`, `agent.patch`, `agent.compaction`, `attachment.created` and
 `message.outbound` are emitted by the engine but have never been driven end to end through this
-API, so code defensively against their fields.
+API, so code defensively against their fields. (The echoed input events are verified: posting,
+echo, `processedAt`, cursor resume and retry dedup were driven end to end on 2026-08-19.)
 
 ---
 
@@ -128,13 +131,13 @@ const ctl = new AbortController()
 const budget = setTimeout(() => ctl.abort(), 120_000)   // a stuck run must not hang the process
 
 let text = ''
-let lastSeq = 0
+let cursor: string | undefined
 let outcome: 'succeeded' | 'failed' | 'aborted' | undefined
 const failedTools: string[] = []
 
 try {
   for await (const ev of zc.streamEvents(agentId, session.session_id, { signal: ctl.signal })) {
-    lastSeq = ev.seq                                    // the resume cursor - persist it
+    cursor = ev.cursor ?? cursor                        // the resume token - persist it
     text += assistantText(ev)                           // '' for every non agent.assistant event
 
     const think = thinkingText(ev)
@@ -156,14 +159,14 @@ console.log(outcome, text.trim(), failedTools)
 
 Mechanics worth knowing:
 
-- `{ after: lastSeq }` is appended to the request only when `after > 0`, so passing `0` is the same
-  as passing nothing. That is why `lastSeq` starts at `0` and is never reset.
+- `{ cursor }` resumes from right after that event. `{ after: seq }` still works but selects the
+  deprecated engine-only lane (no echoed inputs) - keep it for old stored cursors only.
 - Aborting the signal ends the generator cleanly - the SDK swallows its own abort and returns
   instead of throwing, so you do not need a `catch` for your own cancellation. The flip side is in
   Reconnecting: a clean end no longer tells you which of the two things happened.
 - The generator drops any event whose `seq` is at or below the highest it has already yielded, so a
   boundary event replayed by the server is never delivered twice within one generator instance.
-- For a multi-turn session, open a fresh stream per turn with `{ after: lastSeq }` rather than
+- For a multi-turn session, open a fresh stream per turn with the last `cursor` rather than
   holding one open and counting `run.finished` events. It is easier to reason about, and it is what
   the reconnect wrapper below assumes.
 
@@ -176,9 +179,10 @@ request and the generator ends when that response body ends. There is no retry, 
 auto-resume anywhere in the SDK - looping is the caller's job, and an integration that omits the
 loop looks fine in testing and then silently stops receiving events in production.
 
-What the server gives you in exchange is server-side resume. Every durable frame carries its `seq`
-in the SSE `id:` line; pass `{ after: lastSeq }` and the server replays the log from your cursor
-before continuing live - no client-side buffer to keep, and no gap if the reconnect takes a while.
+What the server gives you in exchange is server-side resume. Every durable frame carries its
+resume token in the SSE `id:` line, handed back as `ev.cursor`; pass `{ cursor }` and the server
+replays the log from right after that event before continuing live - no client-side buffer to
+keep, and no gap if the reconnect takes a while.
 The server may re-send the boundary frame, and the generator drops anything at or below the highest
 `seq` it has already yielded, so you do not write that check yourself. The one subtlety: a caller
 abort and an idle server close both end the generator the same quiet way, so check the signal to
@@ -200,17 +204,17 @@ const sleep = (ms: number, signal?: AbortSignal) =>
 export interface TurnResult {
   outcome?: 'succeeded' | 'failed' | 'aborted'
   text: string
-  lastSeq: number                       // valid to resume from even when outcome is undefined
+  cursor?: string                       // valid to resume from even when outcome is undefined
 }
 
 export async function streamTurn(
   zc: ZooclawClient,
   agentId: string,
   sessionId: string,
-  opts: { after?: number; signal?: AbortSignal; maxAttempts?: number; onEvent?: (ev: SessionEvent) => void } = {},
+  opts: { cursor?: string; signal?: AbortSignal; maxAttempts?: number; onEvent?: (ev: SessionEvent) => void } = {},
 ): Promise<TurnResult> {
   const maxAttempts = opts.maxAttempts ?? 6
-  let lastSeq = opts.after ?? 0
+  let cursor = opts.cursor
   let text = ''
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -222,15 +226,15 @@ export async function streamTurn(
 
     try {
       for await (const ev of zc.streamEvents(agentId, sessionId, {
-        after: lastSeq,             // server replays from the cursor; a repeated boundary frame is dropped
+        ...(cursor ? { cursor } : {}), // server replays from the token; a repeated boundary frame is dropped
         signal: attemptCtl.signal,
       })) {
-        lastSeq = ev.seq            // advance BEFORE anything that can throw
+        cursor = ev.cursor ?? cursor  // advance BEFORE anything that can throw
         text += assistantText(ev)
         opts.onEvent?.(ev)
         if (isRunFinished(ev)) {
           const outcome = runOutcome(ev)
-          return { ...(outcome ? { outcome } : {}), text, lastSeq }
+          return { ...(outcome ? { outcome } : {}), text, ...(cursor ? { cursor } : {}) }
         }
       }
       // Generator ended without run.finished. Either the caller aborted (checked below) or the
@@ -244,44 +248,46 @@ export async function streamTurn(
       attemptCtl.abort()
     }
 
-    if (opts.signal?.aborted) return { text, lastSeq }   // caller cancelled: do NOT reconnect
+    if (opts.signal?.aborted) return { text, ...(cursor ? { cursor } : {}) } // caller cancelled: do NOT reconnect
     await sleep(Math.min(1_000 * 2 ** attempt, 15_000), opts.signal)
   }
 
-  return { text, lastSeq }          // out of attempts; lastSeq still resumes the same turn later
+  return { text, ...(cursor ? { cursor } : {}) } // out of attempts; the cursor still resumes the same turn later
 }
 ```
 
 A non-2xx on the stream open throws `ZooclawError(status, 'events stream HTTP <status>')` with
 **no** `type` field, so match on `.status` here, never on `.type` or the message. Calling the HTTP
-endpoint directly, `?after=<seq>` is the resume parameter the SDK sends and the only one that has
-been exercised. The server writes the `id:` line, so a browser `EventSource` will send
-`Last-Event-ID` on its own; whether the server honours that header has not been verified, so pass
-`?after=` explicitly rather than relying on it.
+endpoint directly, `?cursor=` is the resume parameter, and the standard `Last-Event-ID` header
+carries the same token - the server writes the `id:` line, so a browser `EventSource` resumes on
+its own. `?after=<seq>` still resumes the deprecated engine-only lane; old stored cursors only.
 
 ---
 
 ## Reading history over REST
 
-`listEvents(agentId, sessionId, opts?: { after?: number; types?: string[]; limit?: number })` reads
-the same durable log the stream reads and returns the same normalized `SessionEvent[]`; text
+`listEvents(agentId, sessionId, opts?: { after?: number; cursor?: string; types?: string[]; limit?: number })`
+reads the same durable log the stream reads and returns the same normalized `SessionEvent[]`; text
 assembled from a REST replay is identical to text assembled from the stream. But it returns
-**one page**. `limit` defaults to 100 server-side and is capped at 500, and a full page
-is truncated silently - there is no `has_more`, no total, and no next cursor in the response. A
-session with 600 events answers with 500 of them and looks complete. That silent truncation is why
-`listAllEvents` exists:
+**one page** (`limit` defaults to 100 server-side, capped at 500) and drops the page's
+`hasMore`/`nextCursor`. For the full log use `listAllEvents`; for hand-paging use
+`listEventsPage`, which is the same call keeping the pagination fields:
 
 ```ts
-const all = await zc.listAllEvents(agentId, sessionId)   // ascending seq, deduped across pages
-const replies = await zc.listAllEvents(agentId, sessionId, { types: ['agent.assistant'] })
+const all = await zc.listAllEvents(agentId, sessionId)   // ascending seq, follows the cursor to the end
+const page = await zc.listEventsPage(agentId, sessionId, { limit: 100 }) // { events, hasMore, nextCursor }
+const userAndReplies = await zc.listAllEvents(agentId, sessionId, {
+  types: ['user.message', 'agent.assistant'],            // a rendered message list in one filter
+})
 ```
 
-`listAllEvents` walks the `after` seq cursor - it is not a page-number pager. It stops when a short
-page arrives or when the highest `seq` in a page fails to advance the cursor, so a server that
-ignored `after` returns a duplicate page instead of spinning forever. `types` is joined into one
-comma-separated query parameter and filtered server-side; every entry must be a member of
-`SESSION_EVENT_TYPES` or the call is `400 invalid_request`. Reach for `listEvents` directly only
-when you are paging by hand, or want the last window of a session you know is under 500 events.
+`listAllEvents` follows the server's `nextCursor` until `hasMore` is false (falling back to an
+`after` walk on servers without cursor pagination). Both lanes stop when the cursor fails to
+advance, so a misbehaving server costs one extra request instead of a spin. `types` is joined into
+one comma-separated query parameter and filtered server-side; valid members are
+`SESSION_EVENT_TYPES` plus `PUBLIC_INPUT_EVENT_TYPES`, anything else is `400 invalid_request`.
+Passing `after` anywhere selects the deprecated engine-only lane (no echoed inputs) - old stored
+cursors only.
 
 ### When the transcript is the better read
 
@@ -301,12 +307,10 @@ const transcript = (s.history ?? [])
 ```
 
 **The transcript has no cursor.** `limit` selects the most recent rows, and this surface takes no
-`after` and no offset, so an older window of a long session is not reachable through it. The event
-log does not make up the difference either: `SESSION_EVENT_TYPES` has no user-message type, so
-`listAllEvents` gives you the assistant side only. If you need a complete two-sided export of a long
-session, keep the record yourself - persist each `user.message` you post alongside the
-`agent.assistant` events you read - and say so rather than shipping an export that silently starts
-in the middle.
+`after` and no offset, so an older window of a long session is not reachable through it. That does
+not matter for exports anymore: the event log is bidirectional, so
+`listAllEvents(..., { types: ['user.message', 'agent.assistant'] })` is the complete two-sided
+record of a session of any length. Reach for the transcript only for the two fields below.
 
 Two things are easiest to read here:
 
@@ -392,7 +396,7 @@ every session method, because the route is `/agents/{id}/sessions/{sid}/events`.
 
 | Type | Body | Effect |
 |---|---|---|
-| `user.message` | `content` (non-empty **string**). The API reference also declares an optional `attachments[]` and `idempotency_key`; neither has been exercised here | Appends a user turn and starts a run |
+| `user.message` | `content` (non-empty **string**), optional `idempotency_key` (exercised - a same-key retry converges on the same event instead of double-delivering), optional `attachments[]` (not exercised) | Appends a user turn and starts a run |
 | `user.interrupt` | no other fields | Aborts the in-flight run; that run ends `run.finished` with `status: 'aborted'` |
 | `user.tool_confirmation` | `approval_id`, `decision`: `allow-once` / `allow-always` / `deny` | Resolves a pending approval |
 | `system.message` | `text` (non-empty string) | Injects a note the model reads on the **next** turn |
@@ -400,13 +404,17 @@ every session method, because the route is `/agents/{id}/sessions/{sid}/events`.
 ```ts
 const res = await zc.postEvents(agentId, sessionId, [
   { type: 'system.message', text: "Operator note: the user's plan is Enterprise." },
-  { type: 'user.message', content: 'Which limits apply to me?' },   // a plain string is what has been exercised
+  { type: 'user.message', content: 'Which limits apply to me?', idempotency_key: 'msg-7' },
 ])
 if (res.events[0]?.accepted !== true) { /* the event did not take - inspect before streaming */ }
 ```
 
-`postEvents` answers `202` with one entry per submitted event, `{ id?, type?, accepted? }`.
-`accepted` is the field that matters: `202` alone means queued, not that a turn happened.
+`postEvents` answers `202` with one entry per submitted event. An accepted event comes back as the
+full event object the history will show (with its `seq`); an unaccepted one stays a
+`{ id, type, accepted: false }` receipt. `accepted` is the field that matters: `202` alone means
+queued, not that a turn happened. Your accepted inputs then appear in the event log itself
+(`user.message` and friends), with `processedAt` flipping from `null` to a timestamp once the agent
+consumes them - so a UI renders the pending state and the final message list from the same surface.
 
 `system.message` lands in context on the *following* turn, not the current one, so post it before
 the `user.message` it should affect. It is the supported way to hand an agent state your application
