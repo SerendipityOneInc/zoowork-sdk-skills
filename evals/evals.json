@@ -114,13 +114,13 @@
       "id": 3,
       "name": "export-a-long-transcript",
       "prompt": "Our support agent has sessions that run to several hundred messages. Write a function that takes an agent id and a session id and exports the complete transcript of that session to a JSON file. It has to be complete - we're using it for compliance review.",
-      "expected_output": "Code that either calls listAllEvents, or pages listEvents with the after cursor until exhausted, or uses getSession with history. Must not call listEvents once and treat the result as the whole session.",
+      "expected_output": "Code that either calls listAllEvents, or pages listEventsPage on the cursor until hasMore is false, or uses getSession with history. A complete two-sided export should include the echoed user.message events, not just the assistant side. Must not call listEvents once and treat the result as the whole session.",
       "files": [],
       "assertions": [
         {
           "name": "reads the whole session rather than one page",
           "kind": "present",
-          "patterns": ["listAllEvents", "after:", "history:\\s*true"]
+          "patterns": ["listAllEvents", "listEventsPage", "nextCursor", "history:\\s*true"]
         },
         {
           "name": "does not treat a single listEvents call as complete",

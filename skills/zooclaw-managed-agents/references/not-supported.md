@@ -75,9 +75,9 @@ const s = await zc.createSession(agentId, {
 })
 
 let reply = ''
-let lastSeq = 0
+let cursor: string | undefined
 for await (const ev of zc.streamEvents(agentId, s.session_id)) {
-  lastSeq = ev.seq
+  cursor = ev.cursor ?? cursor
   reply += assistantText(ev)
   if (isRunFinished(ev)) break // the stream does NOT close at turn end - break or you wait for the idle timeout
 }
@@ -92,9 +92,9 @@ if (ask) {
     { type: 'user.message', content: 'Answer the customer using that data.' }, // system.message alone does not start a turn
   ])
   let answer = ''
-  for await (const ev of zc.streamEvents(agentId, s.session_id, { after: lastSeq })) {
-    lastSeq = ev.seq
-    answer += assistantText(ev) // resumed from lastSeq: no gap, no duplicate frame
+  for await (const ev of zc.streamEvents(agentId, s.session_id, cursor ? { cursor } : {})) {
+    cursor = ev.cursor ?? cursor
+    answer += assistantText(ev) // resumed from the cursor: no gap, no duplicate frame
     if (isRunFinished(ev)) break
   }
 }
@@ -254,15 +254,15 @@ run no long-lived process of your own.
 configurable at all is a schedule's `delivery` field, which accepts `none` or a typed `announce`;
 webhook delivery is refused there.
 
-**What to do instead.** Every durable event carries `seq`, a per-session cursor that survives
+**What to do instead.** Every streamed event carries a `cursor` resume token that survives
 disconnects. Hold the stream for a live conversation and, when the server closes it on idle, call
-`streamEvents(agentId, sessionId, { after: lastSeq })` again - you resume from exactly there, with
+`streamEvents(agentId, sessionId, { cursor })` again - you resume from exactly there, with
 no gap and no duplicate reaching your loop (the server may re-send the boundary frame; the
-generator drops it). For a background job, poll
-`listAllEvents(agentId, sessionId, { after: lastSeq })` on whatever interval suits you, with the
-same guarantee. Webhook consumers usually implement that de-duplication themselves with an
-idempotency table; the `seq` cursor supplies it. What you do give up is process-free operation: you
-pay for the connection or the poll, and someone has to run the loop.
+generator drops it). For a background job, poll `listEventsPage(agentId, sessionId, { cursor })`
+on whatever interval suits you and follow `nextCursor`, with the same guarantee. Webhook consumers
+usually implement that de-duplication themselves with an idempotency table; the cursor supplies it.
+What you do give up is process-free operation: you pay for the connection or the poll, and someone
+has to run the loop.
 See `references/events-and-streaming.md` - Reconnecting.
 
 ---

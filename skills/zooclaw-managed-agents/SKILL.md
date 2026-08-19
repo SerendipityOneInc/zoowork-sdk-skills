@@ -146,9 +146,9 @@ const session = await zc.createSession(agentId, {
 // 5. Stream until the turn ends. The stream is session-scoped and does NOT close at turn end -
 //    break yourself or you block until the server's idle timeout.
 let reply = ''
-let lastSeq = 0
+let cursor: string | undefined // each event's resume token; persist the last one you saw
 for await (const ev of zc.streamEvents(agentId, session.session_id)) {
-  lastSeq = ev.seq
+  cursor = ev.cursor ?? cursor
   reply += assistantText(ev) // '' for every event that is not agent.assistant
   if (isRunFinished(ev)) {
     if (runOutcome(ev) !== 'succeeded') throw new Error(`run ${runOutcome(ev)}`)
@@ -162,8 +162,8 @@ Later turns in the same session post onto it and stream again from where you sto
 ```ts
 await zc.postEvents(agentId, session.session_id, [{ type: 'user.message', content: 'And for annual plans?' }])
 
-for await (const ev of zc.streamEvents(agentId, session.session_id, { after: lastSeq })) {
-  lastSeq = ev.seq
+for await (const ev of zc.streamEvents(agentId, session.session_id, cursor ? { cursor } : {})) {
+  cursor = ev.cursor ?? cursor
   reply += assistantText(ev)
   if (isRunFinished(ev)) break // required every time: the stream does not end on its own
 }
@@ -176,24 +176,29 @@ for await (const ev of zc.streamEvents(agentId, session.session_id, { after: las
 Enough to write a correct read loop; `references/events-and-streaming.md` has the vocabulary, the
 history-reading path, and the reconnect pattern.
 
-- **Read events through the helpers, not by hand.** The same event arrives in two different shapes -
-  REST gives `event_type` / `run_id` / `created_at`, SSE gives `eventType` / `runId` / `createdAt` -
-  and neither carries a top-level `type`. Everything the SDK returns is already normalized to
-  `{ seq, eventType, payload, runId?, turn?, createdAt? }`. Use `assistantText`, `thinkingText`,
-  `toolCall`, `isRunFinished`, `runOutcome` rather than reaching into `payload` yourself.
-- **`seq` is a durable per-session cursor.** Remember the last one you saw. Reconnect with
-  `streamEvents(agentId, sessionId, { after: lastSeq })` and the server replays from your cursor, so
+- **The event log is the whole conversation.** Your own inputs echo back as `user.message` (and
+  friends) alongside the agent's output, so a message list renders from this one surface - no
+  client-side copy of what you sent is needed. An input event's `processedAt` is `null` while
+  queued and a timestamp once the agent has consumed it.
+- **Read events through the helpers, not by hand.** The wire spells the same event differently
+  per lane and transport, and no shape carries a top-level `type`. Everything the SDK returns is
+  already normalized to `{ seq, eventType, payload, runId?, turn?, createdAt?, id?, processedAt?,
+  cursor? }`. Use `assistantText`, `messageText`, `thinkingText`, `toolCall`, `isRunFinished`,
+  `runOutcome` rather than reaching into `payload` yourself.
+- **Resume with each event's `cursor` token.** Remember the last one you saw. Reconnect with
+  `streamEvents(agentId, sessionId, { cursor })` and the server replays from right after it, so
   nothing is lost; it may re-send the boundary frame, and the generator drops that for you.
-  **The SDK does not reconnect for you** - it opens one request
-  and the generator ends when the server closes on idle. Looping over that is the caller's job.
+  (`{ after: seq }` still works but selects the deprecated engine-only lane - old stored cursors
+  only.) **The SDK does not reconnect for you** - it opens one request and the generator ends when
+  the server closes on idle. Looping over that is the caller's job.
 - **A run can succeed with failed tool calls.** `toolCall(ev).isError === true` does not fail the
   run. Only `runOutcome(ev)` decides.
 - **`toolCall(ev).phase` has three values**, not two: `start`, `end`, and `blocked`. A `blocked` call
   is waiting on an approval and has **not** run. Treating it as `end` reports work that never
   happened.
-- **`listEvents()` truncates silently.** One page, default 100, hard cap 500, and no `has_more`,
-  no total, no cursor in the response. A 600-event session returns 500 and looks complete. Use
-  `listAllEvents()` for history unless you are paging by hand.
+- **`listEvents()` returns one page and drops the page's pagination fields.** Default 100, hard
+  cap 500. Use `listAllEvents()` for history - it follows the server's cursor to the end - or
+  `listEventsPage()` when paging by hand (same call, keeps `hasMore`/`nextCursor`).
 
 ## Writing into a session
 
@@ -207,6 +212,10 @@ to write to.
 
 `user.interrupt` cancels an in-flight run. With no run in flight it answers `accepted: false`, which
 is a normal reply and not an error.
+
+Give each event an `idempotency_key` (any stable string): a `postEvents` retried after a timeout
+then converges instead of delivering the message twice. Accepted events come back as the full event
+object the history will show (with its `seq`); an unaccepted interrupt stays a plain receipt.
 
 ## Skills (quick reference)
 

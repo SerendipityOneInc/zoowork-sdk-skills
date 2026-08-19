@@ -86,7 +86,7 @@ optional except `name: string`:
 
 | Field | Type | Note |
 |---|---|---|
-| `model` | `{ primary: string; input?: string[] }` | prefixed id from `listModels()` |
+| `model` | `{ primary: string; input?: string[]; max_tokens?: number }` | prefixed id from `listModels()`; `max_tokens` caps output per model request (omit for the platform default) |
 | `persona` | `{ docs: { name: string; content: string; seed_policy?: string }[] }` | `docs` is an **array of documents**, not a filename-keyed object |
 | `skills` | `{ skill_id: string; version?: number \| 'latest' }[]` | declared on the type, but no recorded create exercised it - attach with `putAgentSkill` instead |
 | `labels` | `Record<string, string>` | what `listAgents({ labels })` filters on |
@@ -153,32 +153,36 @@ while reads keep working, so interrupt an in-flight run first or the archive rac
 `references/events-and-streaming.md` - Reading a turn covers the helpers and the reconnect loop.
 
 ```ts
-postEvents(agentId: string, sessionId: string, events: OutboundEvent[]): Promise<{ events: { id?: string; type?: string; accepted?: boolean }[] }>
-listEvents(agentId: string, sessionId: string, opts?: { after?: number; types?: string[]; limit?: number }): Promise<SessionEvent[]>
+postEvents(agentId: string, sessionId: string, events: OutboundEvent[]): Promise<{ events: PostEventReceipt[] }>
+listEvents(agentId: string, sessionId: string, opts?: { after?: number; cursor?: string; types?: string[]; limit?: number }): Promise<SessionEvent[]>
+listEventsPage(agentId: string, sessionId: string, opts?: { after?: number; cursor?: string; types?: string[]; limit?: number }): Promise<SessionEventPage>
 listAllEvents(
   agentId: string,
   sessionId: string,
   opts?: { after?: number; types?: string[]; pageSize?: number },
 ): Promise<SessionEvent[]>
-streamEvents(agentId: string, sessionId: string, opts?: { after?: number; signal?: AbortSignal }): AsyncGenerator<SessionEvent>  // a generator, not a promise
+streamEvents(agentId: string, sessionId: string, opts?: { after?: number; cursor?: string; signal?: AbortSignal }): AsyncGenerator<SessionEvent>  // a generator, not a promise
 ```
 
 Only four `OutboundEvent` types can be written: `user.message`, `user.interrupt`,
-`user.tool_confirmation`, `system.message`. `postEvents` answers 202; a `user.interrupt` with no run
-in flight comes back `accepted: false`, a normal reply rather than an error. **`listEvents` returns
-one page and truncates silently.** `limit` defaults to 100 and caps at 500, and the response carries
-no `has_more`, no total and no next cursor - a session with 600 events answers 500 and looks
-complete, with nothing on the result distinguishing a full page from the end of the log.
-`listAllEvents` walks the same endpoint on the **`after` sequence cursor**, not a page number:
-`pageSize` is the per-request `limit` (default and maximum 500), each round advances `after` to the
-highest `seq` seen, and the walk stops on a short page or when that `seq` fails to advance the
-cursor, so a server ignoring `after` returns a duplicate page rather than spinning forever. Results
-are ascending by `seq`, deduplicated across page boundaries.
+`user.tool_confirmation`, `system.message` - and all four echo back into the event log, so the log
+alone renders the whole conversation. `postEvents` answers 202; an accepted event comes back as the
+full event object (with its `seq`), and a `user.interrupt` with no run in flight comes back
+`accepted: false`, a normal reply rather than an error. Give each event an `idempotency_key` so a
+timeout retry converges instead of double-delivering. **`listEvents` returns one page and drops the
+page's pagination fields.** `limit` defaults to 100 and caps at 500. `listEventsPage` is the same
+call keeping `hasMore`/`nextCursor` (`SessionEventPage` is `{ events, hasMore?, nextCursor? }`) -
+feed `nextCursor` back as `cursor` to page by hand. `listAllEvents` follows the server's cursor to
+the end of the log, falling back to an `after` walk on servers without cursor pagination; both
+lanes stop when the cursor fails to advance, and results are ascending by `seq`, deduplicated
+across page boundaries. Passing `after` anywhere selects the deprecated engine-only lane (no echoed
+inputs) - old stored cursors only.
 
 `streamEvents` opens exactly one request and yields until the body ends. It does **not** reconnect,
 retry or back off; when the server closes on idle the generator returns, and resuming is your loop
-calling it again with `{ after: lastSeq }`. A non-2xx response throws a `ZooclawError` with no
-`type`; an abort via `opts.signal` ends the generator cleanly rather than throwing.
+calling it again with `{ cursor }` from the last event's `cursor` token. A non-2xx response throws
+a `ZooclawError` with no `type`; an abort via `opts.signal` ends the generator cleanly rather than
+throwing.
 
 ## Skills
 

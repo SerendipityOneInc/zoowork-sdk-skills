@@ -278,11 +278,11 @@ const session = await zc.createSession(agentId, {
 })
 
 let reply = ''
-let lastSeq = 0
+let cursor: string | undefined
 const calls: string[] = []
 
 for await (const ev of zc.streamEvents(agentId, session.session_id)) {
-  lastSeq = ev.seq
+  cursor = ev.cursor ?? cursor
   reply += assistantText(ev) // '' for every event that is not agent.assistant
   const call = toolCall(ev)
   if (call?.phase === 'start') calls.push(`${call.toolName} ${JSON.stringify(call.args ?? {})}`)
@@ -293,7 +293,7 @@ for await (const ev of zc.streamEvents(agentId, session.session_id)) {
 }
 
 const consulted = calls.some((c) => c.includes('/skills/deck-review/'))
-console.log({ consulted, calls, reply: reply.slice(0, 200), lastSeq })
+console.log({ consulted, calls, reply: reply.slice(0, 200), cursor })
 ```
 
 **How to read that.** No event announces "skill selected". What happens is that the model reads the
