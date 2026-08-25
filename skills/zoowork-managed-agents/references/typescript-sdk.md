@@ -175,7 +175,17 @@ workspace the person approves it in. The non-QR path is `addChannel` with the pl
 own credentials in `config` (platform-specific keys, passed through). `allow_from` is
 write-once at create - updates cannot touch it.
 
-Six facts that bite, all of them verified the hard way:
+Seven facts that bite, all of them verified the hard way:
+
+- **`account` names the binding, and the name is unique per USER across every agent.** One
+  active binding per (owner, platform, account), so taking `feishu`/`default` on one agent
+  takes it from all the others. Format is `^[a-z0-9][a-z0-9_-]{0,63}$` plus three reserved
+  words (`__proto__`, `prototype`, `constructor`), and nothing is normalized - capitals or
+  spaces are a `400`, not a cleanup. `'default'` is very likely already held by a binding the
+  same login made in the app, which the server refuses to adopt: `409 channel.conflict`.
+  `listChannels` is agent-scoped, so the SDK cannot pre-check a name - track your own. On the
+  QR path the clash lands AFTER someone has scanned, leaving a freshly registered Feishu app
+  behind in their workspace.
 
 - **WeChat cannot be bound through this API.** `weixin`/`wechat` answer
   `400 channel.weixin_setup_required` telling you to use a QR flow, and that flow does not
@@ -198,14 +208,18 @@ Six facts that bite, all of them verified the hard way:
 - **`actual_state` starts moving once a channel is bound** - it reports that channel's
   connectivity. It is STILL not an API-readiness signal; keep gating on `desired_state`.
 
-`addChannel` is an **upsert**: the same `platform`+`account` twice answers 201 again and
-overwrites, it does not conflict. `removeChannel` is **idempotent** (removing an absent binding
-is `200 {ok:true}`) while `updateChannel` is **not** (`404 channel.not_found`) - that asymmetry
-decides whether your cleanup path needs a `catch`. `dm_policy:'pairing'` is rejected with
+`addChannel` is idempotent but **not** an upsert: an identical body for the same
+`platform`+`account` answers 201 again and replays the binding you already have, while the same
+pair with a **changed** `config` answers `409 channel.conflict`. Rotating credentials therefore
+means `removeChannel` then `addChannel` - a plain re-add fails.
+
+`removeChannel` is **idempotent** (removing an absent binding is `200 {ok:true}`) while
+`updateChannel` is **not** (`404 channel.not_found`) - that asymmetry decides whether your
+cleanup path needs a `catch`. `dm_policy:'pairing'` is rejected with
 `400 channel.pairing_unsupported`. `updateChannel` returns the channel in its new state, and
-`enabled:false` also moves `status` to `'disabled'` and resets `health`. `deleteAgent` best-effort disables the agent's channels;
-a cleanup failure never turns the delete into an error, so unbind explicitly when a binding
-must die.
+`enabled:false` also moves `status` to `'disabled'` and resets `health`. `deleteAgent`
+best-effort disables the agent's channels; a cleanup failure never turns the delete into an
+error, so unbind explicitly when a binding must die.
 
 ## Sessions
 
