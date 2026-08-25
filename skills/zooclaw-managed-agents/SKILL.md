@@ -1,6 +1,6 @@
 ---
 name: zooclaw-managed-agents
-description: Build on ZooClaw Managed Agents - hosted AI agents that run in a managed sandbox, driven from your own code through the `@zooclaw-agents/sdk` TypeScript SDK. Use this skill whenever ZooClaw is mentioned; on any `zct_` key, `agt_` or `skl_` id, `ZOOCLAW_API_KEY`, `ZOOCLAW_BASE_URL`, `@zooclaw-agents/sdk`, `createZooclawClient`, `waitUntilRunning`, `putAgentSkill`, or the ZooClaw App Kit; on the errors `agent_not_running`, `environment_locked`, `session_archived`, `exec_requires_agent_scope`, or `environment_not_ready`; and when someone wants a ZooClaw agent they built locally, with its skills, hosted somewhere it can serve real users. Read it before writing any ZooClaw call - code that merely looks right here compiles and then fails at runtime.
+description: Build on ZooClaw Managed Agents - hosted AI agents that run in a managed sandbox, driven from your own code through the `@zooclaw-agents/sdk` TypeScript SDK. Use this skill whenever ZooClaw is mentioned; on any `zct_` key, `agt_` or `skl_` id, `ZOOCLAW_API_KEY`, `ZOOCLAW_BASE_URL`, `@zooclaw-agents/sdk`, `createZooclawClient`, `waitUntilRunning`, `putAgentSkill`, `startFeishuSetup`, binding a Feishu/Lark channel to an agent, or the ZooClaw App Kit; on the errors `agent_not_running`, `environment_locked`, `session_archived`, `exec_requires_agent_scope`, or `environment_not_ready`; and when someone wants a ZooClaw agent they built locally, with its skills, hosted somewhere it can serve real users. Read it before writing any ZooClaw call - code that merely looks right here compiles and then fails at runtime.
 license: MIT
 ---
 
@@ -262,7 +262,7 @@ Uploading a local skill directory and attaching it is the core of
 | The user wants to | Read |
 |---|---|
 | A signature, a return shape, or a method you are not certain exists | `references/typescript-sdk.md` - all 51 client methods by area |
-| Cron schedules (including the `payload.outcome` gate), running a command in the sandbox (`exec`), `wake`, environments, approvals, artifacts, or the system prompt | `references/typescript-sdk.md` - these surfaces appear **nowhere else in this skill**, and each has a trap worth a debugging session (schedule reads and writes speak different vocabularies; `exec` needs an agent-scope sandbox; artifact routes need selectors the SDK derives for you) |
+| Cron schedules (including the `payload.outcome` gate), running a command in the sandbox (`exec`), `wake`, environments, approvals, artifacts, the system prompt, or channels (binding Feishu/Lark, SDK >= 0.3.0) | `references/typescript-sdk.md` - these surfaces appear **nowhere else in this skill**, and each has a trap worth a debugging session (schedule reads and writes speak different vocabularies; `exec` needs an agent-scope sandbox; artifact routes need selectors the SDK derives for you) |
 | To consume the stream, read history, reconnect, or render tool calls | `references/events-and-streaming.md` |
 | To host an agent they built locally, with its skills | `references/deploy-your-agent.md` - **follow it in order, do not summarize it** |
 | Something you suspect is not supported (custom tools, vaults, webhooks, file uploads, approvals, memory) | `references/not-supported.md` - **read before designing**, each entry names the real alternative |
