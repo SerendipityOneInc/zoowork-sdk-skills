@@ -1,4 +1,4 @@
-# ZooClaw Managed Agents - Events and Streaming
+# ZooWork Managed Agents - Events and Streaming
 
 Everything an agent does inside a session is an event. You drive a session by posting a small set
 of inbound events, and you observe it by reading the outbound event log - either as a durable REST
@@ -117,11 +117,11 @@ blocks until that idle timeout fires. Break on `isRunFinished(ev)` yourself.
 
 ```ts
 import {
-  createZooclawClient, assistantText, thinkingText, toolCall, isRunFinished, runOutcome,
-} from '@zooclaw-agents/sdk'
+  createZooworkClient, assistantText, thinkingText, toolCall, isRunFinished, runOutcome,
+} from '@zoowork-ai/sdk'
 
-const zc = createZooclawClient()                        // reads ZOOCLAW_API_KEY
-const agentId = process.env.ZOOCLAW_AGENT_ID!           // agt_..., created and started once at setup
+const zc = createZooworkClient()                        // reads ZOOWORK_API_KEY
+const agentId = process.env.ZOOWORK_AGENT_ID!           // agt_..., created and started once at setup
 
 const session = await zc.createSession(agentId, {
   initial_events: [{ type: 'user.message', content: 'What is our refund window?' }],
@@ -190,9 +190,9 @@ tell them apart or a user who cancelled gets reconnected to.
 
 ```ts
 import {
-  ZooclawError, assistantText, isRunFinished, runOutcome,
-  type SessionEvent, type ZooclawClient,
-} from '@zooclaw-agents/sdk'
+  ZooworkError, assistantText, isRunFinished, runOutcome,
+  type SessionEvent, type ZooworkClient,
+} from '@zoowork-ai/sdk'
 
 const sleep = (ms: number, signal?: AbortSignal) =>
   new Promise<void>((resolve) => {
@@ -208,7 +208,7 @@ export interface TurnResult {
 }
 
 export async function streamTurn(
-  zc: ZooclawClient,
+  zc: ZooworkClient,
   agentId: string,
   sessionId: string,
   opts: { cursor?: string; signal?: AbortSignal; maxAttempts?: number; onEvent?: (ev: SessionEvent) => void } = {},
@@ -241,7 +241,7 @@ export async function streamTurn(
       // server closed an idle connection - the normal case, and not an error.
     } catch (e) {
       // 4xx is a real problem: unknown id, archived session, revoked key. Retrying cannot fix it.
-      if (e instanceof ZooclawError && e.status >= 400 && e.status < 500) throw e
+      if (e instanceof ZooworkError && e.status >= 400 && e.status < 500) throw e
       // Everything else - socket reset, 5xx, DNS - is worth another attempt.
     } finally {
       opts.signal?.removeEventListener('abort', relay)
@@ -256,7 +256,7 @@ export async function streamTurn(
 }
 ```
 
-A non-2xx on the stream open throws `ZooclawError(status, 'events stream HTTP <status>')` with
+A non-2xx on the stream open throws `ZooworkError(status, 'events stream HTTP <status>')` with
 **no** `type` field, so match on `.status` here, never on `.type` or the message. Calling the HTTP
 endpoint directly, `?cursor=` is the resume parameter, and the standard `Last-Event-ID` header
 carries the same token - the server writes the `id:` line, so a browser `EventSource` resumes on
@@ -298,7 +298,7 @@ and no maximum for this surface, so pass one explicitly rather than assuming the
 numbers apply here.
 
 ```ts
-import { messageText } from '@zooclaw-agents/sdk'
+import { messageText } from '@zoowork-ai/sdk'
 
 const s = await zc.getSession(agentId, sessionId, { history: true, limit: 50 })
 const transcript = (s.history ?? [])
