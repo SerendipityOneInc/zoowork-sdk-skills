@@ -261,8 +261,8 @@ Uploading a local skill directory and attaching it is the core of
 
 | The user wants to | Read |
 |---|---|
-| A signature, a return shape, or a method you are not certain exists | `references/typescript-sdk.md` - all 51 client methods by area |
-| Cron schedules (including the `payload.outcome` gate), running a command in the sandbox (`exec`), `wake`, environments, approvals, artifacts, the system prompt, or channels (binding Feishu/Lark, SDK >= 0.3.0) | `references/typescript-sdk.md` - these surfaces appear **nowhere else in this skill**, and each has a trap worth a debugging session (schedule reads and writes speak different vocabularies; `exec` needs an agent-scope sandbox; artifact routes need selectors the SDK derives for you) |
+| A signature, a return shape, or a method you are not certain exists | `references/typescript-sdk.md` - all 58 client methods by area |
+| Cron schedules (including the `payload.outcome` gate), running a command in the sandbox (`exec`), `wake`, environments, approvals, artifacts, the system prompt, or channels (binding Feishu/Lark, SDK >= 0.3.1) | `references/typescript-sdk.md` - these surfaces appear **nowhere else in this skill**, and each has a trap worth a debugging session (schedule reads and writes speak different vocabularies; `exec` needs an agent-scope sandbox; artifact routes need selectors the SDK derives for you) |
 | To consume the stream, read history, reconnect, or render tool calls | `references/events-and-streaming.md` |
 | To host an agent they built locally, with its skills | `references/deploy-your-agent.md` - **follow it in order, do not summarize it** |
 | Something you suspect is not supported (custom tools, vaults, webhooks, file uploads, approvals, memory) | `references/not-supported.md` - **read before designing**, each entry names the real alternative |

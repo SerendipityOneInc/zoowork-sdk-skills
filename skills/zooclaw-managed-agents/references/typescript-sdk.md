@@ -1,6 +1,6 @@
 # TypeScript SDK surface
 
-All 51 methods on `ZooclawClient`, grouped by area, signatures exactly as `src/client.ts` declares
+All 58 methods on `ZooclawClient`, grouped by area, signatures exactly as `src/client.ts` declares
 them. The package is `@zooclaw-agents/sdk` - ESM only (no CJS `require` condition, no subpath
 exports), zero runtime dependencies, `engines.node >= 20`, shipping `dist/index.d.ts`, which is the
 authority over anything here. `SKILL.md` has the mandatory flow; this file is for looking up a
@@ -120,9 +120,27 @@ agent sits at `activating` permanently.
 ## Channels
 
 Bind chat platforms (Feishu/Lark) to an API-created agent, so the same agent also answers
-people in the chat app. Requires SDK >= 0.3.0 AND a gateway release from late August 2026 -
-on deployments without it **every route in this family answers 404**; that is a deployment
-gap, not a wrong call.
+people in the chat app. Verified against a live deployment 2026-08-25. Requires SDK >= 0.3.1
+AND a gateway release still rolling out - a deployment without it answers 404 in a DIFFERENT
+envelope (`{"error":{"type":"not_found"}}` instead of this family's `{"code","detail"}`),
+which is how you tell "no channels here" from "not found".
+
+**Which platforms bind, and what `config` each needs** (probed 2026-08-25):
+
+| platform | `addChannel` | server-driven QR flow | `config` (camelCase) |
+|---|---|---|---|
+| `feishu` | 201 | yes — the only one here | `{appId, appSecret, domain}` when skipping the QR flow |
+| `slack` | 201 | **never will** | `{botToken:'xoxb-…', appToken:'xapp-…'}` both required |
+| `wecom` | 201 | not on this API yet | `{botId, secret}` both required |
+| `weixin`/`wechat` | **400** `channel.weixin_setup_required` | not on this API yet | — cannot bind here |
+| anything else | **400** `channel.invalid_request` | — | — |
+
+The two "no QR flow" cells are different facts. **Slack cannot have one**: a Slack app is
+created by a person on api.slack.com and its tokens only ever exist in that person's browser,
+so any guided setup — including the one in the ZooClaw app — ends by having them paste the same
+two tokens you pass to `addChannel`. Slack therefore loses nothing here. **WeCom and WeChat do
+have QR flows in the product**, just not exposed on this API; WeCom still binds via
+`addChannel`, WeChat cannot be bound at all.
 
 ```ts
 listChannels(agentId): Promise<AgentChannel[]>                       // [] for a pure API agent
@@ -149,22 +167,45 @@ const done = await zc.waitForFeishuSetup(agentId, setup.session_id, {
 if (done.status !== 'success') report(done.status) // 'expired' | 'denied' | 'error'
 ```
 
-`waitForFeishuSetup` returns **every** terminal status instead of throwing on the human ones -
-"nobody scanned" is `'expired'`, not an exception. It throws only your own timeout
-(`408`/`'timeout'`) or abort (`0`/`'aborted'`), both synthesized locally like
-`waitUntilRunning`'s. Poll statuses: `pending | success | expired | denied | error`; treat
-unknown values as still-in-flight. The non-QR path is `addChannel` with the platform app's
+`waitForFeishuSetup` returns terminal statuses the server reports in the BODY
+(`success | expired | denied | error`) instead of throwing - a rejection is an outcome. Treat
+unknown statuses as still-in-flight. Observed defaults: `expires_in: 600`, `poll_interval: 5`.
+`brand: 'lark'` really switches the URI host to `open.larksuite.com`, and must match the
+workspace the person approves it in. The non-QR path is `addChannel` with the platform app's
 own credentials in `config` (platform-specific keys, passed through). `allow_from` is
 write-once at create - updates cannot touch it.
 
-Three facts that bite:
+Six facts that bite, all of them verified the hard way:
 
+- **WeChat cannot be bound through this API.** `weixin`/`wechat` answer
+  `400 channel.weixin_setup_required` telling you to use a QR flow, and that flow does not
+  exist here (`/channels/weixin/setup` is a 404). Do not follow the error message.
+
+- **`addChannel`'s `201` means STORED, not WORKING.** Credentials are NOT validated at bind
+  time: deliberately bogus ones returned `201` with `health:'unknown'`/`status:'configured'`,
+  then listed moments later as `health:'unhealthy'`/`status:'error'`. Never report success
+  off the create call - read `health`/`status` from a follow-up `listChannels`.
+- **A setup session can stop existing, and then polling 404s** with
+  `channel.feishu_session_not_found` instead of reporting a terminal status. Confirmed after
+  `cancelFeishuSetup`; whether natural expiry takes this path or reports `'expired'` is
+  UNOBSERVED. `waitForFeishuSetup` throws there - so a caller needs a `catch`, not just a
+  status switch.
+- **Three distinct 404 codes.** `channel.feishu_session_not_found` (QR session gone, start a
+  new one), `channel.not_found` (agent has no binding on that platform),
+  `service_api.not_found` (unknown agent, or unknown action). Match the `code`, not the status.
 - **A chat conversation and an API session are separate sessions with separate context.**
   Binding a channel does not let API calls read the Feishu conversation or inject into it.
 - **`actual_state` starts moving once a channel is bound** - it reports that channel's
   connectivity. It is STILL not an API-readiness signal; keep gating on `desired_state`.
-- **`deleteAgent` best-effort disables the agent's channels**; a cleanup failure never turns
-  the delete into an error, so unbind explicitly (`removeChannel`) when a binding must die.
+
+`addChannel` is an **upsert**: the same `platform`+`account` twice answers 201 again and
+overwrites, it does not conflict. `removeChannel` is **idempotent** (removing an absent binding
+is `200 {ok:true}`) while `updateChannel` is **not** (`404 channel.not_found`) - that asymmetry
+decides whether your cleanup path needs a `catch`. `dm_policy:'pairing'` is rejected with
+`400 channel.pairing_unsupported`. `updateChannel` returns the channel in its new state, and
+`enabled:false` also moves `status` to `'disabled'` and resets `health`. `deleteAgent` best-effort disables the agent's channels;
+a cleanup failure never turns the delete into an error, so unbind explicitly when a binding
+must die.
 
 ## Sessions
 
