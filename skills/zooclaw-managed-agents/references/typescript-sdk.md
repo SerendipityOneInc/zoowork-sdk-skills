@@ -133,12 +133,11 @@ free string and the server knows more):
 | `feishu` | 201 | yes, the only one | yes |
 | `slack` | 201 | no | yes |
 | `wecom` | 201 | no | yes |
-| `mattermost` | 201 | no | **NEVER** - filtered out server-side |
 | `weixin`/`wechat` | **400** `channel.weixin_setup_required` | no | - |
 | anything else | **400** `channel.invalid_request` | - | - |
 
 ```ts
-listChannels(agentId): Promise<AgentChannel[]>                       // [] for a pure API agent; NEVER lists mattermost
+listChannels(agentId): Promise<AgentChannel[]>                       // [] for a pure API agent
 addChannel(agentId, { platform, account?, display_name?, dm_policy?, group_policy?, allow_from?, config? }): Promise<AgentChannel>
 updateChannel(agentId, platform, { account?, dm_policy?, group_policy?, enabled? }?): Promise<AgentChannel>
 removeChannel(agentId, platform, { account? }?): Promise<void>       // account defaults to 'default'
@@ -170,11 +169,8 @@ workspace the person approves it in. The non-QR path is `addChannel` with the pl
 own credentials in `config` (platform-specific keys, passed through). `allow_from` is
 write-once at create - updates cannot touch it.
 
-Seven facts that bite, all of them verified the hard way:
+Six facts that bite, all of them verified the hard way:
 
-- **A Mattermost binding is INVISIBLE.** It binds (201), updates and removes normally, but the
-  server filters mattermost out of every `listChannels` response. An empty list is therefore
-  not proof nothing is bound - if you bind it, keep your own record.
 - **WeChat cannot be bound through this API.** `weixin`/`wechat` answer
   `400 channel.weixin_setup_required` telling you to use a QR flow, and that flow does not
   exist here (`/channels/weixin/setup` is a 404). Do not follow the error message.
