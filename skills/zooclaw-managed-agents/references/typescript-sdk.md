@@ -24,7 +24,7 @@ interface ZooclawConfig {
 }
 
 export type ZooclawAuth = { serviceToken: string } | { apiKey: string }
-export const DEFAULT_BASE_URL = 'https://claw-interface.ecap.yesy.live/service/v1'
+export const DEFAULT_BASE_URL = 'https://clawapi.ecap.gsmo.ai/service/v1'
 ```
 
 **The SDK reads exactly two environment variables: `ZOOCLAW_API_KEY` and `ZOOCLAW_BASE_URL`** -
