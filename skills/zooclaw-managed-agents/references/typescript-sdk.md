@@ -125,16 +125,22 @@ AND a gateway release still rolling out - a deployment without it answers 404 in
 envelope (`{"error":{"type":"not_found"}}` instead of this family's `{"code","detail"}`),
 which is how you tell "no channels here" from "not found".
 
-**Which platforms bind** (probed 2026-08-25 — the routes name only feishu, but `platform` is a
-free string and the server knows more):
+**Which platforms bind, and what `config` each needs** (probed 2026-08-25):
 
-| platform | `addChannel` | QR flow | in `listChannels` |
+| platform | `addChannel` | server-driven QR flow | `config` (camelCase) |
 |---|---|---|---|
-| `feishu` | 201 | yes, the only one | yes |
-| `slack` | 201 | no | yes |
-| `wecom` | 201 | no | yes |
-| `weixin`/`wechat` | **400** `channel.weixin_setup_required` | no | - |
-| anything else | **400** `channel.invalid_request` | - | - |
+| `feishu` | 201 | yes — the only one here | `{appId, appSecret, domain}` when skipping the QR flow |
+| `slack` | 201 | **never will** | `{botToken:'xoxb-…', appToken:'xapp-…'}` both required |
+| `wecom` | 201 | not on this API yet | `{botId, secret}` both required |
+| `weixin`/`wechat` | **400** `channel.weixin_setup_required` | not on this API yet | — cannot bind here |
+| anything else | **400** `channel.invalid_request` | — | — |
+
+The two "no QR flow" cells are different facts. **Slack cannot have one**: a Slack app is
+created by a person on api.slack.com and its tokens only ever exist in that person's browser,
+so any guided setup — including the one in the ZooClaw app — ends by having them paste the same
+two tokens you pass to `addChannel`. Slack therefore loses nothing here. **WeCom and WeChat do
+have QR flows in the product**, just not exposed on this API; WeCom still binds via
+`addChannel`, WeChat cannot be bound at all.
 
 ```ts
 listChannels(agentId): Promise<AgentChannel[]>                       // [] for a pure API agent
