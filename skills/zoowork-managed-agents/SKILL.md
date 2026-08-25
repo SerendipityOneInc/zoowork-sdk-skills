@@ -76,16 +76,14 @@ that already consumes this SDK. It provisions an agent on first use, so the user
 
 ```bash
 cd app-kit                        # the kit is one template in that repo, not its root
-cp .dev.vars.example .dev.vars    # paste the zct_ key into ZOOCLAW_API_KEY
+cp .dev.vars.example .dev.vars    # paste the zct_ key into ZOOWORK_API_KEY
 pnpm install
 pnpm db:migrate:local
 pnpm dev                          # UI on http://127.0.0.1:4000
 ```
 
-Node 22 or later (the App Kit's floor; the SDK itself needs only Node 20). `ZOOCLAW_API_KEY` is the
-only value to fill in, and that spelling is deliberate: it is the App Kit's own variable, and the
-kit has not been renamed yet. Do not substitute this SDK's `ZOOWORK_API_KEY` — the Worker reads
-only the former and throws on the first request without it. Before shipping it to real users, two things must change: set
+Node 22 or later (the App Kit's floor; the SDK itself needs only Node 20). `ZOOWORK_API_KEY` is the
+only value to fill in. Before shipping it to real users, two things must change: set
 `AGENT_PICKER=off`, and put Cloudflare Access in front of the Worker
 (`CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD`) instead of the local `DEV_EMAIL` shortcut, which trusts
 whoever connects. When someone asks to customize the App Kit rather than call the API, read its
