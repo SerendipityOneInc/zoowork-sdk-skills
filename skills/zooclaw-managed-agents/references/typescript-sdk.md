@@ -125,8 +125,20 @@ AND a gateway release still rolling out - a deployment without it answers 404 in
 envelope (`{"error":{"type":"not_found"}}` instead of this family's `{"code","detail"}`),
 which is how you tell "no channels here" from "not found".
 
+**Which platforms bind** (probed 2026-08-25 — the routes name only feishu, but `platform` is a
+free string and the server knows more):
+
+| platform | `addChannel` | QR flow | in `listChannels` |
+|---|---|---|---|
+| `feishu` | 201 | yes, the only one | yes |
+| `slack` | 201 | no | yes |
+| `wecom` | 201 | no | yes |
+| `mattermost` | 201 | no | **NEVER** - filtered out server-side |
+| `weixin`/`wechat` | **400** `channel.weixin_setup_required` | no | - |
+| anything else | **400** `channel.invalid_request` | - | - |
+
 ```ts
-listChannels(agentId): Promise<AgentChannel[]>                       // [] for a pure API agent
+listChannels(agentId): Promise<AgentChannel[]>                       // [] for a pure API agent; NEVER lists mattermost
 addChannel(agentId, { platform, account?, display_name?, dm_policy?, group_policy?, allow_from?, config? }): Promise<AgentChannel>
 updateChannel(agentId, platform, { account?, dm_policy?, group_policy?, enabled? }?): Promise<AgentChannel>
 removeChannel(agentId, platform, { account? }?): Promise<void>       // account defaults to 'default'
@@ -158,7 +170,14 @@ workspace the person approves it in. The non-QR path is `addChannel` with the pl
 own credentials in `config` (platform-specific keys, passed through). `allow_from` is
 write-once at create - updates cannot touch it.
 
-Five facts that bite, the first two verified the hard way:
+Seven facts that bite, all of them verified the hard way:
+
+- **A Mattermost binding is INVISIBLE.** It binds (201), updates and removes normally, but the
+  server filters mattermost out of every `listChannels` response. An empty list is therefore
+  not proof nothing is bound - if you bind it, keep your own record.
+- **WeChat cannot be bound through this API.** `weixin`/`wechat` answer
+  `400 channel.weixin_setup_required` telling you to use a QR flow, and that flow does not
+  exist here (`/channels/weixin/setup` is a 404). Do not follow the error message.
 
 - **`addChannel`'s `201` means STORED, not WORKING.** Credentials are NOT validated at bind
   time: deliberately bogus ones returned `201` with `health:'unknown'`/`status:'configured'`,
@@ -177,8 +196,12 @@ Five facts that bite, the first two verified the hard way:
 - **`actual_state` starts moving once a channel is bound** - it reports that channel's
   connectivity. It is STILL not an API-readiness signal; keep gating on `desired_state`.
 
-`updateChannel` returns the channel in its new state, and `enabled:false` also moves `status`
-to `'disabled'` and resets `health`. `deleteAgent` best-effort disables the agent's channels;
+`addChannel` is an **upsert**: the same `platform`+`account` twice answers 201 again and
+overwrites, it does not conflict. `removeChannel` is **idempotent** (removing an absent binding
+is `200 {ok:true}`) while `updateChannel` is **not** (`404 channel.not_found`) - that asymmetry
+decides whether your cleanup path needs a `catch`. `dm_policy:'pairing'` is rejected with
+`400 channel.pairing_unsupported`. `updateChannel` returns the channel in its new state, and
+`enabled:false` also moves `status` to `'disabled'` and resets `health`. `deleteAgent` best-effort disables the agent's channels;
 a cleanup failure never turns the delete into an error, so unbind explicitly when a binding
 must die.
 
