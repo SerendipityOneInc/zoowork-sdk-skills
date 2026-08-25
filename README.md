@@ -1,6 +1,6 @@
-# ZooClaw Skills
+# ZooWork Skills
 
-Skills that teach AI coding assistants how to build on [ZooClaw Managed Agents](https://github.com/SerendipityOneInc/zoowork-agents-docs).
+Skills that teach AI coding assistants how to build on [ZooWork Managed Agents](https://github.com/SerendipityOneInc/zoowork-agents-docs).
 
 Install one of these into Claude Code, Cursor, or any other assistant that reads
 [Agent Skills](https://github.com/anthropics/skills), and it will know the shape of the API before
@@ -25,7 +25,7 @@ Using Claude Code and nothing else? The plugin route does the same job:
 
 ```bash
 /plugin marketplace add SerendipityOneInc/zoowork-sdk-skills
-/plugin install zooclaw-agents@zooclaw-skills
+/plugin install zoowork-agents@zoowork-skills
 ```
 
 Install it wherever you are building, not only where you are reading. The skill is about the
@@ -35,9 +35,9 @@ platform, so it earns its keep in *your* project.
 
 | Skill | What it gives an assistant |
 |---|---|
-| [`zooclaw-managed-agents`](skills/zooclaw-managed-agents/SKILL.md) | How to create and configure agents, run sessions, consume the event stream, upload and attach skills, schedule autonomous runs - and which capabilities are absent, with the real alternative for each |
+| [`zoowork-managed-agents`](skills/zoowork-managed-agents/SKILL.md) | How to create and configure agents, run sessions, consume the event stream, upload and attach skills, schedule autonomous runs - and which capabilities are absent, with the real alternative for each |
 
-`zooclaw-managed-agents` covers the TypeScript SDK, `@zooclaw-agents/sdk`. There is no Python SDK
+`zoowork-managed-agents` covers the TypeScript SDK, `@zoowork-ai/sdk`. There is no Python SDK
 yet; the skill says so rather than letting an assistant invent an import.
 
 ## Two things called "skill"
@@ -46,7 +46,7 @@ Worth separating before it causes confusion, because both words appear in the sa
 
 - **The skills in this repo** are installed into a *developer's coding assistant*, and are read while
   writing code.
-- **ZooClaw platform skills** are uploaded with `POST /v1/skills` and attached to a *running ZooClaw
+- **ZooWork platform skills** are uploaded with `POST /v1/skills` and attached to a *running ZooWork
   agent*, which reads them while doing its job.
 
 The skill here teaches an assistant how to build and upload the other kind. See

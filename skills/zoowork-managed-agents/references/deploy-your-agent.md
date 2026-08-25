@@ -1,4 +1,4 @@
-# ZooClaw - Deploying an Agent You Built Locally
+# ZooWork - Deploying an Agent You Built Locally
 
 You have a persona, one or more skill directories, and a front end you can host. What you do not
 have is somewhere for the agent loop and its skills to run. This file turns that into a hosted
@@ -9,21 +9,21 @@ Run the steps in order, and perform each verification - several of these calls r
 ways that do not prove the effect landed. `putAgentSkill` returns a bumped `config_version` whether
 or not the skill resolved, `triggerSchedule` returns `triggered: true` for a schedule that was
 skipped, and `exec` returns HTTP 200 for a command that failed. Code is TypeScript against
-`@zooclaw-agents/sdk`, ESM, Node 20 or later, top-level await, and every snippet assumes this
+`@zoowork-ai/sdk`, ESM, Node 20 or later, top-level await, and every snippet assumes this
 preamble:
 
 ```ts
 import { readFile } from 'node:fs/promises'
-import { createZooclawClient, assistantText, isRunFinished, runOutcome, toolCall } from '@zooclaw-agents/sdk'
+import { createZooworkClient, assistantText, isRunFinished, runOutcome, toolCall } from '@zoowork-ai/sdk'
 
-const zc = createZooclawClient() // reads ZOOCLAW_API_KEY; throws at construction if unset
+const zc = createZooworkClient() // reads ZOOWORK_API_KEY; throws at construction if unset
 ```
 
 ---
 
 ## Step 0. Take stock
 
-Map what you have onto what ZooClaw stores, before you write a call. Three of these rows are
+Map what you have onto what ZooWork stores, before you write a call. Three of these rows are
 one-way doors.
 
 | What you built locally | Where it goes | What to know |
@@ -32,7 +32,7 @@ one-way doors.
 | A skill directory containing `SKILL.md` | A zip, uploaded with `uploadSkill`, attached with `putAgentSkill` | Two calls, and the upload alone attaches nothing. Steps 4 and 5 |
 | Custom tool / function definitions | **Nowhere.** There is no custom tool type and no tool-result event | Redesign this now, not after the first integration test - `references/not-supported.md` - Custom tools names the two real alternatives |
 | A local working directory of files | `/workspace` inside the agent's sandbox | With `sandbox.scope: 'agent'` there is one `/workspace` shared by every session, so it is agent state, not conversation state |
-| Your chat UI | Stays yours | It talks to your backend, never to ZooClaw. Step 9 |
+| Your chat UI | Stays yours | It talks to your backend, never to ZooWork. Step 9 |
 | Per-end-user secrets or accounts | **Nowhere.** Vaults and credential APIs do not exist | `references/not-supported.md` - Credentials |
 
 Decide these at create time. Two of them cannot be undone:
@@ -145,7 +145,7 @@ console.log(running.status?.desired_state) // 'running'
 Do not hand-roll this loop. The readable-looking field, `status.actual_state`, reports chat-channel
 health: `running` is not one of its values, and an API-only agent parks at `activating` for the rest
 of its life, so a loop waiting on it never returns. `waitUntilRunning` polls `desired_state`, bounds
-each in-flight request as well as the gap between polls, and throws a `ZooclawError` with
+each in-flight request as well as the gap between polls, and throws a `ZooworkError` with
 `status: 408` / `type: 'timeout'` when the budget runs out.
 
 **Verify:** `running.status?.desired_state === 'running'`. Nothing else is readiness.
@@ -389,13 +389,13 @@ is not a per-user token and there is no way to scope it down. So it lives in you
 server-side secret store, and never in a browser bundle, a mobile app, or a build-time inlined
 variable. Everything else about the integration follows from that single fact.
 
-The shape is `browser -> your backend -> ZooClaw`, where your backend holds `ZOOCLAW_API_KEY`,
+The shape is `browser -> your backend -> ZooWork`, where your backend holds `ZOOWORK_API_KEY`,
 authenticates your user, and looks up the sessions it created for them. One agent, one session per
 conversation, is the normal design: the agent is the product, the session is the thread.
 
 ```ts
 // POST /api/conversations - your route, your auth
-const user = await authenticateYourUser(req)      // your problem, not ZooClaw's
+const user = await authenticateYourUser(req)      // your problem, not ZooWork's
 const session = await zc.createSession(AGENT_ID, {
   metadata: { user_id: user.id },                 // write-once, at create
 })

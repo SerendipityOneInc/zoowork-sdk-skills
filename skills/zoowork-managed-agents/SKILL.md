@@ -1,10 +1,10 @@
 ---
-name: zooclaw-managed-agents
-description: Build on ZooClaw Managed Agents - hosted AI agents that run in a managed sandbox, driven from your own code through the `@zooclaw-agents/sdk` TypeScript SDK. Use this skill whenever ZooClaw is mentioned; on any `zct_` key, `agt_` or `skl_` id, `ZOOCLAW_API_KEY`, `ZOOCLAW_BASE_URL`, `@zooclaw-agents/sdk`, `createZooclawClient`, `waitUntilRunning`, `putAgentSkill`, `startFeishuSetup`, binding a Feishu/Lark channel to an agent, or the ZooClaw App Kit; on the errors `agent_not_running`, `environment_locked`, `session_archived`, `exec_requires_agent_scope`, or `environment_not_ready`; and when someone wants a ZooClaw agent they built locally, with its skills, hosted somewhere it can serve real users. Read it before writing any ZooClaw call - code that merely looks right here compiles and then fails at runtime.
+name: zoowork-managed-agents
+description: Build on ZooWork Managed Agents - hosted AI agents that run in a managed sandbox, driven from your own code through the `@zoowork-ai/sdk` TypeScript SDK. Use this skill whenever ZooWork is mentioned; on any `zct_` key, `agt_` or `skl_` id, `ZOOWORK_API_KEY`, `ZOOWORK_BASE_URL`, `@zoowork-ai/sdk`, `createZooworkClient`, `waitUntilRunning`, `putAgentSkill`, `startFeishuSetup`, binding a Feishu/Lark channel to an agent, or the ZooWork App Kit; on the errors `agent_not_running`, `environment_locked`, `session_archived`, `exec_requires_agent_scope`, or `environment_not_ready`; and when someone wants a ZooWork agent they built locally, with its skills, hosted somewhere it can serve real users. Read it before writing any ZooWork call - code that merely looks right here compiles and then fails at runtime.
 license: MIT
 ---
 
-# Building on ZooClaw Managed Agents
+# Building on ZooWork Managed Agents
 
 **The four that break code which compiles. If you read nothing else here, read these.**
 
@@ -17,7 +17,7 @@ license: MIT
 4. The stream **does not close at turn end**. `break` on `isRunFinished(ev)` or you block until the
    server's idle timeout.
 
-ZooClaw hosts the agent loop and the sandbox its tools run in. You create an agent (a persistent,
+ZooWork hosts the agent loop and the sandbox its tools run in. You create an agent (a persistent,
 versioned configuration), start it, then open sessions against it and read a durable event stream.
 Your code owns the product; the platform owns the loop, the container, and the transcript. The API
 is a Developer Preview: shapes can change within a version, and the reference files mark which
@@ -29,7 +29,7 @@ after the first integration test).
 
 ## Before you start
 
-**The package is `@zooclaw-agents/sdk`.** Not `@zooclaw/sdk`, not `@zooclaw/agents-sdk`. Those names
+**The package is `@zoowork-ai/sdk`.** Not `@zoowork/sdk`, not `@zoowork-agents/sdk`. Those names
 have never existed on npm, and guessing one sends the user to a 404.
 
 **The key.** One credential authenticates everything: an organization service token that starts with
@@ -38,23 +38,23 @@ every agent in it, so it belongs on a server the user controls and never in a br
 mobile app, or a build-time inlined variable.
 
 ```bash
-export ZOOCLAW_API_KEY='zct_...'
+export ZOOWORK_API_KEY='zct_...'
 ```
 
 **No key yet? Walk the user through getting one - do not guess a signup URL.** Keys are
-self-served in the ZooClaw App:
+self-served in the ZooWork App:
 
-1. First check what they have: is `ZOOCLAW_API_KEY` set? If a key exists, `listModels()` is the
+1. First check what they have: is `ZOOWORK_API_KEY` set? If a key exists, `listModels()` is the
    cheapest proof it works - it touches no agent and creates nothing. A `401` with
    `service_token.invalid` means the key is wrong or revoked, not that the route moved.
-2. If there is no key, send them to the **ZooClaw App → Settings → API Keys → Create API Key**.
+2. If there is no key, send them to the **ZooWork App → Settings → API Keys → Create API Key**.
    Tell them to name it after where it will live (`staging-backend`, not `test`), and to copy the
    secret immediately - **it is shown exactly once** and cannot be retrieved again.
 3. Who can do this: on a personal organization, anyone; on an enterprise organization the tab
    requires the **admin** role. If they cannot see the tab, the next step is asking their org
    admin for a key, not hunting for another endpoint - there is none, and key management has no
    API on purpose.
-4. When they come back with the key, put it in `ZOOCLAW_API_KEY` and re-run the `listModels()`
+4. When they come back with the key, put it in `ZOOWORK_API_KEY` and re-run the `listModels()`
    check before writing any other code.
 
 A leaked or lost key is handled on the same App page: **Rotate** kills the old secret immediately
@@ -64,16 +64,18 @@ and shows a new one once. Never echo the key back in code, logs, or chat.
 
 | The user has | Give them | Why |
 |---|---|---|
-| A key, and wants a working agent UI today | **ZooClaw App Kit** - clone, paste the key, three commands | A deployable chat app with auth, persistence, streaming, and reconnect already solved |
+| A key, and wants a working agent UI today | **ZooWork App Kit** - clone, paste the key, three commands | A deployable chat app with auth, persistence, streaming, and reconnect already solved |
 | Their own front end, or an agent design of their own | **The SDK, directly** | Full control; you write the integration around sessions and events |
 | An agent they built locally that has nowhere to run | **The SDK** - see `references/deploy-your-agent.md` | Their persona and skills become a hosted agent; their UI keeps talking to their own backend |
 
 ### The App Kit path
 
-`https://github.com/SerendipityOneInc/zoowork-app-kit` is a Cloudflare Workers chat application that
-already consumes this SDK. It provisions an agent on first use, so the user needs no `agt_` id.
+The App Kit is the `app-kit/` template inside
+`https://github.com/SerendipityOneInc/zoowork-quickstarts`, a Cloudflare Workers chat application
+that already consumes this SDK. It provisions an agent on first use, so the user needs no `agt_` id.
 
 ```bash
+cd app-kit                        # the kit is one template in that repo, not its root
 cp .dev.vars.example .dev.vars    # paste the zct_ key into ZOOCLAW_API_KEY
 pnpm install
 pnpm db:migrate:local
@@ -81,7 +83,9 @@ pnpm dev                          # UI on http://127.0.0.1:4000
 ```
 
 Node 22 or later (the App Kit's floor; the SDK itself needs only Node 20). `ZOOCLAW_API_KEY` is the
-only value to fill in. Before shipping it to real users, two things must change: set
+only value to fill in, and that spelling is deliberate: it is the App Kit's own variable, and the
+kit has not been renamed yet. Do not substitute this SDK's `ZOOWORK_API_KEY` — the Worker reads
+only the former and throws on the first request without it. Before shipping it to real users, two things must change: set
 `AGENT_PICKER=off`, and put Cloudflare Access in front of the Worker
 (`CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD`) instead of the local `DEV_EMAIL` shortcut, which trusts
 whoever connects. When someone asks to customize the App Kit rather than call the API, read its
@@ -104,14 +108,14 @@ user's database.
 
 ```ts
 import {
-  createZooclawClient,
+  createZooworkClient,
   assistantText,
   isRunFinished,
   runOutcome,
-} from '@zooclaw-agents/sdk'
+} from '@zoowork-ai/sdk'
 
-// Reads ZOOCLAW_API_KEY. Throws at construction if no key resolves, rather than 401-ing later.
-const zc = createZooclawClient()
+// Reads ZOOWORK_API_KEY. Throws at construction if no key resolves, rather than 401-ing later.
+const zc = createZooworkClient()
 
 // 1. Ask which models this deployment carries. A recalled id is a 400, not a fallback.
 const models = await zc.listModels()
@@ -219,7 +223,7 @@ object the history will show (with its `seq`); an unaccepted interrupt stays a p
 
 ## Skills (quick reference)
 
-A ZooClaw skill is a capability attached to an **agent** - a `SKILL.md` plus its files, synced into
+A ZooWork skill is a capability attached to an **agent** - a `SKILL.md` plus its files, synced into
 the agent's sandbox and read by the model when it judges the skill relevant. There is no
 session-level skill list and no API to invoke one; attaching it changes what the agent knows, not
 what you can call.
@@ -262,7 +266,7 @@ Uploading a local skill directory and attaching it is the core of
 | The user wants to | Read |
 |---|---|
 | A signature, a return shape, or a method you are not certain exists | `references/typescript-sdk.md` - all 58 client methods by area |
-| Cron schedules (including the `payload.outcome` gate), running a command in the sandbox (`exec`), `wake`, environments, approvals, artifacts, the system prompt, or channels (binding Feishu/Lark, SDK >= 0.3.1) | `references/typescript-sdk.md` - these surfaces appear **nowhere else in this skill**, and each has a trap worth a debugging session (schedule reads and writes speak different vocabularies; `exec` needs an agent-scope sandbox; artifact routes need selectors the SDK derives for you) |
+| Cron schedules (including the `payload.outcome` gate), running a command in the sandbox (`exec`), `wake`, environments, approvals, artifacts, the system prompt, or channels (binding Feishu/Lark) | `references/typescript-sdk.md` - these surfaces appear **nowhere else in this skill**, and each has a trap worth a debugging session (schedule reads and writes speak different vocabularies; `exec` needs an agent-scope sandbox; artifact routes need selectors the SDK derives for you) |
 | To consume the stream, read history, reconnect, or render tool calls | `references/events-and-streaming.md` |
 | To host an agent they built locally, with its skills | `references/deploy-your-agent.md` - **follow it in order, do not summarize it** |
 | Something you suspect is not supported (custom tools, vaults, webhooks, file uploads, approvals, memory) | `references/not-supported.md` - **read before designing**, each entry names the real alternative |
@@ -291,7 +295,7 @@ either over recalling a shape.
 - **`config_version` is not an optimistic-concurrency token.** Every `PUT` bumps it, including one
   that changes nothing, and so does attaching or detaching a skill. A version that moved does not
   tell you your own section changed, so drift detection built on it does not work.
-- **Match errors on `ZooclawError.status` and `.type`, never on the message.** There are two error
+- **Match errors on `ZooworkError.status` and `.type`, never on the message.** There are two error
   vocabularies, because there are two envelopes: the sessions family answers bare codes
   (`agent_not_running`, `session_archived`), the agents family answers dotted ones
   (`service_api.not_found`). Both land on the same class. No error-code constants are exported -
@@ -303,6 +307,6 @@ either over recalling a shape.
 - **`exec(agentId, args)` takes argv, not a shell string.** Use `['bash', '-lc', 'ls /workspace']`
   for shell semantics. A non-zero exit is still HTTP 200 - the promise resolves, so check
   `exit_code` yourself.
-- **`@zooclaw-agents/sdk` is TypeScript only.** No Python package is published. For another
+- **`@zoowork-ai/sdk` is TypeScript only.** No Python package is published. For another
   language, call the REST API directly and normalize the two event spellings yourself - say that
   rather than inventing an import.

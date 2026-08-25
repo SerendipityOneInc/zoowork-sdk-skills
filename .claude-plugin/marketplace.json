@@ -1,17 +1,17 @@
 {
-  "name": "zooclaw-skills",
+  "name": "zoowork-skills",
   "owner": {
-    "name": "ZooClaw"
+    "name": "ZooWork"
   },
-  "description": "Skills that teach AI coding assistants to build on ZooClaw Managed Agents",
+  "description": "Skills that teach AI coding assistants to build on ZooWork Managed Agents",
   "plugins": [
     {
-      "name": "zooclaw-agents",
-      "description": "Build on the ZooClaw Managed Agents API and TypeScript SDK: create and configure agents, run sessions, stream events, upload and install agent skills, and schedule autonomous runs",
+      "name": "zoowork-agents",
+      "description": "Build on the ZooWork Managed Agents API and TypeScript SDK: create and configure agents, run sessions, stream events, upload and install agent skills, and schedule autonomous runs",
       "source": "./",
       "strict": false,
       "skills": [
-        "./skills/zooclaw-managed-agents"
+        "./skills/zoowork-managed-agents"
       ]
     }
   ]
