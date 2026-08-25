@@ -18,7 +18,7 @@ createZooclawClient(cfg: ZooclawConfig = {}): ZooclawClient   // cfg itself is o
 
 interface ZooclawConfig {
   apiKey?: string    // falls back to ZOOCLAW_API_KEY; an empty ENV VAR counts as unset, an explicit apiKey: '' does not
-  baseUrl?: string   // falls back to ZOOCLAW_BASE_URL, then DEFAULT_BASE_URL; trailing slashes stripped
+  baseUrl?: string   // falls back to ZOOCLAW_BASE_URL, then DEFAULT_BASE_URL (production) - leave unset unless pointing at a different deployment; trailing slashes stripped
   auth?: ZooclawAuth // { serviceToken } is deployment-internal, not available to API-key callers
   fetch?: (input: string, init?: RequestInit) => Promise<Response>  // for edge runtimes and tests
 }
