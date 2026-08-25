@@ -1,4 +1,4 @@
-# ZooClaw Managed Agents - Capability Boundary
+# ZooWork Managed Agents - Capability Boundary
 
 Read this before you design, not after the first integration test. Every entry below is something
 people routinely build on other agent platforms, and each one changes the shape of a product if you
@@ -7,8 +7,8 @@ nearest thing that works.
 
 **"The SDK has no method for it" and "it does not exist" are different claims, and mixing them up
 misleads in both directions.** Before you tell a user something is missing, check
-`references/typescript-sdk.md` for the method list, or the shipped `dist/index.d.ts`. As of SDK
-0.0.5 the client already exposes approvals (`listApprovals`, `resolveApproval`), all seven schedule
+`references/typescript-sdk.md` for the method list, or the shipped `dist/index.d.ts`. The
+client already exposes approvals (`listApprovals`, `resolveApproval`), all seven schedule
 methods, six environment methods, `archiveSession` and `deleteSession`, `uploadSkill` /
 `uploadSkillVersion` / `listSkills` / `deleteSkill`, `listAgents`, `listSessions`, `exec` and
 `wake`. Those are on the client. Whether each one is safe to build on is a separate question, and
@@ -317,9 +317,9 @@ create-time decision because the Environment pin freezes on first sandbox creati
 | Rich environment builds | `config` takes exactly `packages` (apt/npm/pip only), `files`, `build`, `networking`; anything else is `400 invalid_environment_config`. No user-defined secrets, env vars, or start hooks — the platform injects its own runtime credentials for built-in skills, but that layer is internal and not extensible | Install through `packages` and `build.script`; fetch anything secret at run time from your own service |
 | Schedule pause / unpause / archive | No such routes | `updateSchedule(agentId, scheduleId, { enabled: false })` is the off switch, `deleteSchedule` removes it. The `state.paused` field on list rows is a different thing and is unrelated to `enabled` |
 | Schedule cleanup on agent delete | Schedules outlive their agent; `stopAgent` and `deleteAgent` leave them running | `listSchedules` then `deleteSchedule` for each, before `deleteAgent` |
-| A files REST surface, or publishing an artifact from your code | The files routes have no wired backend, and publishing stays in-loop: only the agent's own `artifact_publish` tool creates an artifact | Move content as text in the conversation, or bake it into an Environment at build time. What the agent DID publish is manageable: `listArtifacts` / `getArtifact` / `downloadArtifact` / `deleteArtifact` are on the client as of 0.0.6 - see `references/typescript-sdk.md` - Artifacts |
+| A files REST surface, or publishing an artifact from your code | The files routes have no wired backend, and publishing stays in-loop: only the agent's own `artifact_publish` tool creates an artifact | Move content as text in the conversation, or bake it into an Environment at build time. What the agent DID publish is manageable: `listArtifacts` / `getArtifact` / `downloadArtifact` / `deleteArtifact` are on the client - see `references/typescript-sdk.md` - Artifacts |
 | Scoped or read-only API keys | A `zct_` token is not scopeable: it reads and writes every agent in the organization, and this API exposes no scoping or lifetime controls | Keep it server-side only, behind your own authorization layer. Separate organizations are the only hard boundary |
-| Key rotation from your code | Key management has no API, deliberately | The ZooClaw App has it: **Settings -> API Keys** creates, rotates and revokes keys (personal orgs: anyone; enterprise orgs: admins). Rotate shows the new secret exactly once. Build for the key being a value you can change without a redeploy |
+| Key rotation from your code | Key management has no API, deliberately | The ZooWork App has it: **Settings -> API Keys** creates, rotates and revokes keys (personal orgs: anyone; enterprise orgs: admins). Rotate shows the new secret exactly once. Build for the key being a value you can change without a redeploy |
 
 ---
 

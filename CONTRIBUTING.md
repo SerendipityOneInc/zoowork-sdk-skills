@@ -3,19 +3,19 @@
 ## What belongs in this repo
 
 Skills in this repo teach **AI coding assistants** (Claude Code, Cursor, and anything else that
-reads Agent Skills) how to build software against the ZooClaw Managed Agents API and SDK. They are
+reads Agent Skills) how to build software against the ZooWork Managed Agents API and SDK. They are
 knowledge packages that get installed into a developer's editor.
 
-They are **not** the same thing as ZooClaw platform skills. Two different objects share the word:
+They are **not** the same thing as ZooWork platform skills. Two different objects share the word:
 
 | | Where it lives | How it is installed | Who reads it |
 |---|---|---|---|
 | **This repo's skills** | A developer's coding assistant | `/plugin marketplace add`, or copied into `.claude/skills/` | The coding assistant, while writing code |
-| **ZooClaw platform skills** | A ZooClaw agent's sandbox | `POST /v1/skills` (upload), then `PUT /v1/agents/{id}/skills/{id}` (install) | A running ZooClaw agent, while doing its job |
+| **ZooWork platform skills** | A ZooWork agent's sandbox | `POST /v1/skills` (upload), then `PUT /v1/agents/{id}/skills/{id}` (install) | A running ZooWork agent, while doing its job |
 
 A skill in this repo may well *teach* an agent how to build and upload a platform skill. It is still
 a knowledge package, not a platform skill. If you are adding something meant to be uploaded to a
-running ZooClaw agent, it does not belong here.
+running ZooWork agent, it does not belong here.
 
 ## Structure
 
@@ -37,7 +37,7 @@ that should pull it in.
 
 There is no scaffold to copy - the boilerplate is two frontmatter lines, and the part that is
 actually hard to write well is the `description`. Crib from the shipped skill,
-`skills/zooclaw-managed-agents/SKILL.md`: its description enumerates the identifiers, environment
+`skills/zoowork-managed-agents/SKILL.md`: its description enumerates the identifiers, environment
 variables, and error strings that should pull the skill in, and ends by naming what the skill does
 NOT cover, so a near-miss request does not load it.
 
@@ -58,7 +58,7 @@ triggers for developers who prompt in English - the skill effectively does not e
 Every factual claim in a skill - a number, a field name, an error code, an enum member - must be
 traceable to one of:
 
-- the SDK source (`@zooclaw-agents/sdk`), including its recorded response fixtures and its tests, or
+- the SDK source (`@zoowork-ai/sdk`), including its recorded response fixtures and its tests, or
 - a request that someone actually ran against a live deployment.
 
 A specific that appears in none of those gets removed or restated as unverified; wrapping an
