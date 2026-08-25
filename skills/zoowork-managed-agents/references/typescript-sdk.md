@@ -1,38 +1,38 @@
 # TypeScript SDK surface
 
-All 58 methods on `ZooclawClient`, grouped by area, signatures exactly as `src/client.ts` declares
-them. The package is `@zooclaw-agents/sdk` - ESM only (no CJS `require` condition, no subpath
+All 58 methods on `ZooworkClient`, grouped by area, signatures exactly as `src/client.ts` declares
+them. The package is `@zoowork-ai/sdk` - ESM only (no CJS `require` condition, no subpath
 exports), zero runtime dependencies, `engines.node >= 20`, shipping `dist/index.d.ts`, which is the
 authority over anything here. `SKILL.md` has the mandatory flow; this file is for looking up a
 signature, a return shape, or whether a method exists.
 
 Twelve runtime values are exported and a test pins the list, so an import outside it fails:
-`createZooclawClient`, `DEFAULT_BASE_URL`, `ZooclawError`, `SESSION_EVENT_TYPES`, `normalizeEvent`,
+`createZooworkClient`, `DEFAULT_BASE_URL`, `ZooworkError`, `SESSION_EVENT_TYPES`, `normalizeEvent`,
 `isRunFinished`, `runOutcome`, `messageText`, `assistantText`, `thinkingText`, `toolCall`,
 `parseSSE`. Everything else is a `type`, and there are no error-code constants - see Errors.
 
 ## Client construction
 
 ```ts
-createZooclawClient(cfg: ZooclawConfig = {}): ZooclawClient   // cfg itself is optional
+createZooworkClient(cfg: ZooworkConfig = {}): ZooworkClient   // cfg itself is optional
 
-interface ZooclawConfig {
-  apiKey?: string    // falls back to ZOOCLAW_API_KEY; an empty ENV VAR counts as unset, an explicit apiKey: '' does not
-  baseUrl?: string   // falls back to ZOOCLAW_BASE_URL, then DEFAULT_BASE_URL (production) - leave unset unless pointing at a different deployment; trailing slashes stripped
-  auth?: ZooclawAuth // { serviceToken } is deployment-internal, not available to API-key callers
+interface ZooworkConfig {
+  apiKey?: string    // falls back to ZOOWORK_API_KEY; an empty ENV VAR counts as unset, an explicit apiKey: '' does not
+  baseUrl?: string   // falls back to ZOOWORK_BASE_URL, then DEFAULT_BASE_URL (production) - leave unset unless pointing at a different deployment; trailing slashes stripped
+  auth?: ZooworkAuth // { serviceToken } is deployment-internal, not available to API-key callers
   fetch?: (input: string, init?: RequestInit) => Promise<Response>  // for edge runtimes and tests
 }
 
-export type ZooclawAuth = { serviceToken: string } | { apiKey: string }
+export type ZooworkAuth = { serviceToken: string } | { apiKey: string }
 export const DEFAULT_BASE_URL = 'https://clawapi.ecap.gsmo.ai/service/v1'
 ```
 
-**The SDK reads exactly two environment variables: `ZOOCLAW_API_KEY` and `ZOOCLAW_BASE_URL`** -
-nothing else appears anywhere in the source. There is no `ZOOCLAW_ORG_ID`: the gateway derives the
+**The SDK reads exactly two environment variables: `ZOOWORK_API_KEY` and `ZOOWORK_BASE_URL`** -
+nothing else appears anywhere in the source. There is no `ZOOWORK_ORG_ID`: the gateway derives the
 tenant from the key, so an org id in your environment is dead configuration. Construction **throws a
-plain `Error`, not a `ZooclawError`**, when no key resolves - a missing key is a setup mistake, and
+plain `Error`, not a `ZooworkError`**, when no key resolves - a missing key is a setup mistake, and
 failing loudly here beats a 401 on whatever call runs first, but it does mean a `catch` narrowing on
-`instanceof ZooclawError` will not match it. That guard tests `cfg.apiKey !== undefined`, not
+`instanceof ZooworkError` will not match it. That guard tests `cfg.apiKey !== undefined`, not
 truthiness, so an explicit `apiKey: ''` - which is what `process.env.KEY ?? ''` hands you - slips
 past it and builds a client that sends an empty bearer and 401s on the first call. Only the
 environment-variable path maps `''` to unset. `DEFAULT_BASE_URL` already includes the `/service/v1`
@@ -120,8 +120,8 @@ agent sits at `activating` permanently.
 ## Channels
 
 Bind chat platforms (Feishu/Lark) to an API-created agent, so the same agent also answers
-people in the chat app. Verified against a live deployment 2026-08-25. Requires SDK >= 0.3.1
-AND a gateway release still rolling out - a deployment without it answers 404 in a DIFFERENT
+people in the chat app. Verified against a live deployment 2026-08-25. Requires a gateway
+release still rolling out - a deployment without it answers 404 in a DIFFERENT
 envelope (`{"error":{"type":"not_found"}}` instead of this family's `{"code","detail"}`),
 which is how you tell "no channels here" from "not found".
 
@@ -137,7 +137,7 @@ which is how you tell "no channels here" from "not found".
 
 The two "no QR flow" cells are different facts. **Slack cannot have one**: a Slack app is
 created by a person on api.slack.com and its tokens only ever exist in that person's browser,
-so any guided setup — including the one in the ZooClaw app — ends by having them paste the same
+so any guided setup — including the one in the ZooWork app — ends by having them paste the same
 two tokens you pass to `addChannel`. Slack therefore loses nothing here. **WeCom and WeChat do
 have QR flows in the product**, just not exposed on this API; WeCom still binds via
 `addChannel`, WeChat cannot be bound at all.
@@ -271,7 +271,7 @@ inputs) - old stored cursors only.
 `streamEvents` opens exactly one request and yields until the body ends. It does **not** reconnect,
 retry or back off; when the server closes on idle the generator returns, and resuming is your loop
 calling it again with `{ cursor }` from the last event's `cursor` token. A non-2xx response throws
-a `ZooclawError` with no `type`; an abort via `opts.signal` ends the generator cleanly rather than
+a `ZooworkError` with no `type`; an abort via `opts.signal` ends the generator cleanly rather than
 throwing.
 
 ## Skills
@@ -557,15 +557,15 @@ servers only. See `references/not-supported.md` - Credentials and vaults.
 ## Errors
 
 ```ts
-export class ZooclawError extends Error {
+export class ZooworkError extends Error {
   status: number
   type?: string      // absent, not undefined-valued, when the server sent no code
   constructor(status: number, message: string, type?: string)
 }
 ```
 
-`this.name` is `'ZooclawError'` and the class is a runtime export, so `instanceof` works; the one
-failure that is **not** a `ZooclawError` is the missing-key throw from `createZooclawClient`.
+`this.name` is `'ZooworkError'` and the class is a runtime export, so `instanceof` works; the one
+failure that is **not** a `ZooworkError` is the missing-key throw from `createZooworkClient`.
 **There are two error vocabularies, because there are two envelopes.** The SDK unpacks both into the
 same class, but the spelling differs by family:
 
@@ -583,5 +583,5 @@ apart. Never match on message text: it is prose, it is not stable, and the same 
 you differently worded depending on which envelope answered. Two more things a `catch` should
 expect: a cross-tenant or unknown id answers **404, not 403**, so a 404 does not mean deleted; and
 two errors never came from a server at all - `waitUntilRunning`'s `408 timeout` and `0 aborted`.
-`streamEvents`' stream-open failure is a third `ZooclawError` you did not get from an error
+`streamEvents`' stream-open failure is a third `ZooworkError` you did not get from an error
 envelope, but it does carry the response's real status, with an SDK-written message and no `type`.
