@@ -117,6 +117,55 @@ any runtime the SDK targets, so a stalled gateway parks such a loop forever. The
 `actual_state`: it reports chat-channel health, `running` is not one of its values, and an API-only
 agent sits at `activating` permanently.
 
+## Channels
+
+Bind chat platforms (Feishu/Lark) to an API-created agent, so the same agent also answers
+people in the chat app. Requires SDK >= 0.3.0 AND a gateway release from late August 2026 -
+on deployments without it **every route in this family answers 404**; that is a deployment
+gap, not a wrong call.
+
+```ts
+listChannels(agentId): Promise<AgentChannel[]>                       // [] for a pure API agent
+addChannel(agentId, { platform, account?, display_name?, dm_policy?, group_policy?, allow_from?, config? }): Promise<AgentChannel>
+updateChannel(agentId, platform, { account?, dm_policy?, group_policy?, enabled? }?): Promise<AgentChannel>
+removeChannel(agentId, platform, { account? }?): Promise<void>       // account defaults to 'default'
+
+startFeishuSetup(agentId, { brand?, account?, dm_policy?, group_policy? }?): Promise<FeishuSetupSession>
+pollFeishuSetup(agentId, sessionId): Promise<FeishuPollResult>
+cancelFeishuSetup(agentId, sessionId): Promise<void>
+waitForFeishuSetup(agentId, sessionId, { timeoutMs?, signal?, onPoll? }?): Promise<FeishuPollResult>
+```
+
+The Feishu QR device flow: `startFeishuSetup` answers `{ session_id, verification_uri_complete,
+expires_in, poll_interval }`. **The caller owns the UI** - render `verification_uri_complete`
+(usually as a QR code), then let `waitForFeishuSetup` drive the poll loop:
+
+```ts
+const setup = await zc.startFeishuSetup(agentId)
+renderQr(setup.verification_uri_complete)
+const done = await zc.waitForFeishuSetup(agentId, setup.session_id, {
+  timeoutMs: setup.expires_in * 1000,
+})
+if (done.status !== 'success') report(done.status) // 'expired' | 'denied' | 'error'
+```
+
+`waitForFeishuSetup` returns **every** terminal status instead of throwing on the human ones -
+"nobody scanned" is `'expired'`, not an exception. It throws only your own timeout
+(`408`/`'timeout'`) or abort (`0`/`'aborted'`), both synthesized locally like
+`waitUntilRunning`'s. Poll statuses: `pending | success | expired | denied | error`; treat
+unknown values as still-in-flight. The non-QR path is `addChannel` with the platform app's
+own credentials in `config` (platform-specific keys, passed through). `allow_from` is
+write-once at create - updates cannot touch it.
+
+Three facts that bite:
+
+- **A chat conversation and an API session are separate sessions with separate context.**
+  Binding a channel does not let API calls read the Feishu conversation or inject into it.
+- **`actual_state` starts moving once a channel is bound** - it reports that channel's
+  connectivity. It is STILL not an API-readiness signal; keep gating on `desired_state`.
+- **`deleteAgent` best-effort disables the agent's channels**; a cleanup failure never turns
+  the delete into an error, so unbind explicitly (`removeChannel`) when a binding must die.
+
 ## Sessions
 
 One conversation. Every session method takes `agentId` first, because the route is
