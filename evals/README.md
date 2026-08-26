@@ -59,6 +59,14 @@ So treat a failure as a question rather than a verdict. Open the file and look. 
 right and the assertion was wrong, fix the assertion - a wrong assertion is worse than no assertion,
 because it pushes the next edit in the wrong direction.
 
+One `absent` failure mode deserves naming, because it inverts the whole measurement: **an `absent`
+assertion on a term only this skill introduces cannot discriminate.** The unaided arm has never
+heard of `actual_state` or the `chat.delta` lane, so it passes by ignorance; the skill-equipped arm
+mentions them to explain why it avoided them, and fails. Two assertions were written that way and
+scored the correct answer below the baseline until 2026-08-26. If the risk you want to guard is
+"do not use X", assert on code that *uses* X - a property read, an accumulation - and never on the
+name alone, or assert the positive counterpart instead.
+
 ## Adding an eval
 
 Add an entry to `evals.json` with a realistic prompt - something a developer would actually type,
