@@ -181,6 +181,35 @@
           "patterns": ["signal", "abort", "Abort"]
         }
       ]
+    },
+    {
+      "id": 6,
+      "name": "no-key-yet-onboarding",
+      "prompt": "I want to try ZooWork managed agents from my Node backend. I don't have an API key or anything set up yet - where do I even start?",
+      "expected_output": "Guides the user to create a key at https://zoowork.ai/claw-settings?tab=account-api-keys (Settings -> API Keys), warns the secret is shown exactly once, has them save it into ZOOWORK_API_KEY themselves without pasting it into the chat, and verifies with listModels() before writing integration code.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "gives the real console URL instead of guessing a signup page",
+          "kind": "present",
+          "patterns": ["zoowork\\.ai/claw-settings\\?tab=account-api-keys"]
+        },
+        {
+          "name": "warns the secret is shown exactly once",
+          "kind": "present",
+          "patterns": ["[Ss]hown (exactly )?once", "only (be )?shown once", "[Cc]opy (it|the (key|secret)) (immediately|right away|now)"]
+        },
+        {
+          "name": "has the user save the key themselves rather than paste it into chat",
+          "kind": "present",
+          "patterns": ["not (to )?paste.{0,40}(chat|here|conversation)", "([Dd]on'?t|[Dd]o not|[Nn]ever) (paste|share).{0,60}(chat|here|with me|conversation)", "without (sharing|pasting) (it|the key)"]
+        },
+        {
+          "name": "verifies the key with the cheap read-only call before real code",
+          "kind": "present",
+          "patterns": ["listModels"]
+        }
+      ]
     }
   ]
 }
