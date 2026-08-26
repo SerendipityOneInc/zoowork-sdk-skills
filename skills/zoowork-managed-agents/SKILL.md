@@ -41,21 +41,24 @@ mobile app, or a build-time inlined variable.
 export ZOOWORK_API_KEY='zct_...'
 ```
 
-**No key yet? Walk the user through getting one - do not guess a signup URL.** Keys are
-self-served in the ZooWork App:
+**No key yet? Walk the user through getting one.** Keys are self-served in the ZooWork App:
 
 1. First check what they have: is `ZOOWORK_API_KEY` set? If a key exists, `listModels()` is the
    cheapest proof it works - it touches no agent and creates nothing. A `401` with
-   `service_token.invalid` means the key is wrong or revoked, not that the route moved.
-2. If there is no key, send them to the **ZooWork App → Settings → API Keys → Create API Key**.
-   Tell them to name it after where it will live (`staging-backend`, not `test`), and to copy the
-   secret immediately - **it is shown exactly once** and cannot be retrieved again.
+   `service_token.invalid` means the key is wrong or revoked, not that the route moved - treat it
+   the same as no key and continue here.
+2. If there is no key, send them to
+   **<https://zoowork.ai/claw-settings?tab=account-api-keys>**
+   (in the App: **Settings → API Keys → Create API Key**). Tell them to name it after where it
+   will live (`staging-backend`, not `test`), and to copy the secret immediately - **it is shown
+   exactly once** and cannot be retrieved again. Have them put it in `ZOOWORK_API_KEY` (or their
+   `.env`) themselves and say when it's saved - **the key should not be pasted into the chat**.
 3. Who can do this: on a personal organization, anyone; on an enterprise organization the tab
    requires the **admin** role. If they cannot see the tab, the next step is asking their org
    admin for a key, not hunting for another endpoint - there is none, and key management has no
    API on purpose.
-4. When they come back with the key, put it in `ZOOWORK_API_KEY` and re-run the `listModels()`
-   check before writing any other code.
+4. Once they say the key is saved, re-run the `listModels()` check before writing any other
+   code. If it still fails, send them back to the same page - do not start debugging the SDK.
 
 A leaked or lost key is handled on the same App page: **Rotate** kills the old secret immediately
 and shows a new one once. Never echo the key back in code, logs, or chat.
