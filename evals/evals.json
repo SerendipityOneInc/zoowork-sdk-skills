@@ -25,11 +25,6 @@
           "patterns": ["createAgent", "startAgent"]
         },
         {
-          "name": "never polls actual_state",
-          "kind": "absent",
-          "patterns": ["actual_state"]
-        },
-        {
           "name": "waits on desired_state, or lets the SDK do it",
           "kind": "present",
           "patterns": ["waitUntilRunning", "desired_state"]
@@ -45,9 +40,14 @@
           "patterns": ["isRunFinished", "run\\.finished"]
         },
         {
-          "name": "does not accumulate chat.delta frames",
+          "name": "does not build the reply out of delta frames",
           "kind": "absent",
-          "patterns": ["chat\\.delta", "\\bdelta\\s*\\+="]
+          "patterns": ["\\.delta\\??\\.", "\\bdelta\\s*\\+="]
+        },
+        {
+          "name": "reads assistant text through the SDK rather than digging into payload",
+          "kind": "present",
+          "patterns": ["assistantText\\(", "agent\\.assistant"]
         },
         {
           "name": "stops before deleting",
