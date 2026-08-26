@@ -415,13 +415,71 @@ you hand it an id, so the check that this session belongs to this user is yours 
 
 Per-user context belongs in the session, not in the agent - post a `system.message` event to tell
 the agent which plan the user is on or what they just clicked, rather than creating an agent per
-user or rewriting the persona.
+user or rewriting the persona. The exception is per-user *isolation* - when users must not share
+the agent's `/workspace` or its agent-scoped memory - which is Step 9b.
 
 For streaming, your backend runs `streamEvents` and re-emits to the browser in whatever format your
 UI wants, keeping the last `seq` it forwarded per connection and resuming with `{ after: lastSeq }`
 - the SDK does not reconnect for you. See `references/events-and-streaming.md` - Reconnecting. If
 this sounds like a week of work, the App Kit already implements all of it; see the SKILL.md section
 "The App Kit path" before building it yourself.
+
+---
+
+## Step 9b (when users must not share files). An agent per user, one skill for all
+
+One agent means one sandbox: every session works in the same persistent `/workspace`, so with one
+shared agent, a file one *user's* turn writes, another user's turn can read. When that is
+unacceptable, the shape changes from "one agent, a session per conversation" to **an agent per
+user** - and the maintenance problem changes with it: N agents to keep behaving identically while
+the product keeps changing.
+
+The fleet stays maintainable by one split: **whatever you iterate on goes into a single `org`
+skill; the per-agent configuration stays a thin, stable shell** (short persona + skill installs).
+The mechanism that makes this work is already in Step 5: an install without `versionPin` follows
+latest, so `uploadSkillVersion(skillId, zip)` is the entire rollout - the registry bumps every
+unpinned agent's `config_version` and each user's next turn runs the new version. Do **not** loop
+`putAgentSkill` after publishing a version; that call is for installing, pinning, and unpinning.
+
+At signup, create the user's agent with the skills already in the request, then remember the id:
+
+```ts
+const agent = await zc.createAgent(
+  {
+    resource: {
+      name: `myproduct-${user.id}`,
+      labels: { end_user: user.id },
+      skills: [{ skill_id: PRODUCT_SKILL_ID }], // no version -> follows latest
+      persona: { docs: [{ name: 'AGENTS.md', content: STABLE_PERSONA }] },
+    },
+  },
+  `user-${user.id}`, // stable idempotency key
+)
+await yourDb.users.update(user.id, { agent_id: agent.agent_id }) // YOUR db is the index
+await zc.startAgent(agent.agent_id)
+await zc.waitUntilRunning(agent.agent_id)
+```
+
+Same rules as Step 2 and Step 9, multiplied by N: the agent comes back **stopped**; there is no
+query-sessions-by-end-user, and no query-agents-by-end-user either (`listAgents` filters on
+`labels` but pages at 100 and lists only your bound user's agents) - store `user.id → agent_id`
+at create and check your own database before creating on any retry.
+
+Three fleet-specific traps:
+
+- **Adding a new skill later does not propagate** - only new *versions* of an installed skill do.
+  The install row is per agent. Reconcile lazily instead of sweeping: before opening a session,
+  diff `listAgentSkills(agentId)` against your desired list and PUT only what is missing. Diff
+  first - `putAgentSkill` bumps `config_version` even when it changes nothing (Step 5), so a
+  blind PUT-everything loop rewrites every agent's config on every session open.
+- **Canary by pinning.** Pin the fleet to the running version (`{ versionPin: CURRENT }`), leave
+  canary agents unpinned, publish, verify, then unpin (`{ versionPin: null }`). Each pin/unpin is
+  a config write per agent; budget the sweep.
+- **`deleteSkill` has no in-use guard** (Step 10): delete an org skill the fleet still installs
+  and every agent silently loses it. Retire it from your desired list and let reconciliation
+  `deleteAgentSkill` it everywhere first.
+
+A version publish reaches every active user's next turn - treat it as a deploy, not a draft.
 
 ---
 
