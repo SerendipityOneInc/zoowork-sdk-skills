@@ -414,9 +414,10 @@ the index, and it is also your authorization boundary: the SDK will read any ses
 you hand it an id, so the check that this session belongs to this user is yours to make.
 
 Per-user context belongs in the session, not in the agent - post a `system.message` event to tell
-the agent which plan the user is on or what they just clicked, rather than creating an agent per
-user or rewriting the persona. The exception is per-user *isolation* - when users must not share
-the agent's `/workspace` or its agent-scoped memory - which is Step 9b.
+the agent which plan the user is on or what they just clicked, rather than rewriting the persona.
+One question decides the rest of the shape: can your users share one `/workspace` and one
+agent-scoped memory? If yes, one shared agent is enough; if not - and for most user-facing
+products it is not - you need an agent per user, which is Step 9b.
 
 For streaming, your backend runs `streamEvents` and re-emits to the browser in whatever format your
 UI wants, keeping the last `seq` it forwarded per connection and resuming with `{ after: lastSeq }`
