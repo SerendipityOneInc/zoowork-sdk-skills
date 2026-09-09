@@ -101,8 +101,9 @@ if (!agentId) {
 turn; a duplicate *agent* is a second sandbox, a second `/workspace`, a second set of attached
 skills, and a second id that half your traffic is now talking to. Nothing in the product cleans
 that up, and the two agents drift the moment either one writes a file. Know what the key does and
-does not buy you, though: the SDK forwards it as an `Idempotency-Key` header, and the only
-create-family convergence the SDK pins down is `createSchedule`. The `listAgents` lookup above is
+does not buy you, though: the SDK forwards it as an `Idempotency-Key` header, while
+historical convergence evidence in this example does not cover every create family. Source-reviewed
+HTTP-key contracts cover Agent/Session/Environment; schedules use stable IDs and identical definitions. The `listAgents` lookup above is
 the part you can verify, and its one limit is scope - it queries `owner_uid AND org_id`, so an agent
 a colleague created with a different key will not appear and you would make a second one. On a
 shared deployment, store the id.
@@ -134,8 +135,7 @@ you start it.
 
 ```ts
 const { warnings } = await zc.startAgent(agentId)
-// `channel_routes_reload_failed` is normal for an API-only agent: it has no chat channels to
-// reload. Do not treat it as a failure.
+// Successful warnings are informational; a non-2xx or transport failure still throws.
 if (warnings.length) console.log('start warnings:', warnings)
 
 const running = await zc.waitUntilRunning(agentId, { timeoutMs: 60_000 })
@@ -181,7 +181,7 @@ compliance. Use when the user mentions a deck, .pptx, or slides."
 const zip = await readFile('/abs/path/deck-review.zip') // Buffer is a Uint8Array - accepted as-is
 
 const skill = await zc.uploadSkill(zip, {
-  scope: 'org',                      // 'org' | 'personal' only; 'global' and 'pack' are 403
+  scope: 'org',                      // 'org' | 'personal' only; other values are rejected with 400 (source-reviewed)
   fileName: 'deck-review.zip',
   idempotencyKey: 'deck-review-v1',
 })
@@ -200,9 +200,10 @@ if (Number(skill.latest_version) !== 1) throw new Error('version 1 was not creat
 ```
 
 Two things this catches. `latest_version` comes back as the **string** `"1"` from the multipart
-create while other surfaces spell it as a number, so compare with `Number()`. And more than one row
-means a retried upload created a duplicate skill with the same name and a different id - after an
-upload times out, reconcile with `listSkills({ q: name })` before uploading again.
+create while other surfaces spell it as a number, so compare with `Number()`. Source-reviewed create behavior rejects an existing scope/name with 409 rather than upserting;
+`q` is a search, so inspect name and scope before choosing a row. After a timeout, reconcile with
+`listSkills({ q: name })` before uploading again. Set description in ZIP frontmatter: the root
+create path ignores the options description.
 
 Repeat per skill directory. The `global` catalog entries in `listSkills` (`docx`, `pptx`, `xlsx`,
 `pdf` and friends) are already attached to every agent and are not installable with an API key; do
@@ -246,10 +247,11 @@ ineligible and excluded entries, which is where the reason lives.
 Shipping an edit to a skill is therefore one call, not two:
 
 ```ts
-await zc.uploadSkillVersion(skill.skill_id, await readFile('/abs/path/deck-review.zip'), {
+const version = await zc.uploadSkillVersion(skill.skill_id, await readFile('/abs/path/deck-review.zip'), {
   fileName: 'deck-review.zip',
   idempotencyKey: 'deck-review-v2',
 })
+console.log(version.version, version.state) // SkillVersionRecord, not latest_version/status
 // Unpinned agents follow the new version on their own - the registry bumps their config_version.
 // Do NOT re-run putAgentSkill; it is not what propagates the update.
 ```
@@ -257,9 +259,9 @@ await zc.uploadSkillVersion(skill.skill_id, await readFile('/abs/path/deck-revie
 The frontmatter `name` in the new zip must still match the target skill's name, and a `description`
 passed here overrides the one in the frontmatter.
 
-**Neither call is a safe blind retry after a timeout.** `putAgentSkill` is a `PUT` on the agent and
-`uploadSkillVersion` mints a new immutable version; a request that timed out on your side may well
-have landed on theirs. Reconcile instead: `listAgentSkills` tells you whether the attach took, and
+**Reconcile uncertain writes.** `putAgentSkill` bumps config_version on every successful PUT.
+Source-reviewed version uploads deduplicate identical content; changed bytes create a new version.
+This is not HTTP-header idempotency or an exactly-once guarantee. Reconcile instead: `listAgentSkills` tells you whether the attach took, and
 `listSkills({ q: name })` tells you what `latest_version` actually is.
 
 ---
@@ -374,8 +376,8 @@ Three things to know before you rely on this:
 - **Overlap policy is skip.** A fire that lands while the previous one is still running is dropped,
   not queued. Size the cadence for the slowest run you expect.
 
-To find what a fire produced: `listScheduleRuns` returns dispatch rows and outcome rows and neither
-carries a `session_id`, so walk it from the other end - `listSessions(agentId)` and match
+To find what a fire produced: source-reviewed `listScheduleRuns` rows can carry optional
+`session_id`. Follow it when present. Otherwise inspect `listSessions(agentId)` and match
 `channel === 'cron'` with a `session_key` beginning `agent:{agent_id}:cron:{schedule_id}:`. And
 `triggerSchedule` answering `triggered: true` means dispatched, never that the turn ran; a disabled
 schedule answers `triggered: true` while the run projection records `status: "skipped"`.
@@ -403,7 +405,10 @@ await yourDb.conversations.insert({ user_id: user.id, session_id: session.sessio
 
 // POST /api/conversations/:id/messages
 const row = await yourDb.conversations.findOne({ id, user_id: user.id }) // authorize HERE
-await zc.postEvents(AGENT_ID, row.session_id, [{ type: 'user.message', content: req.body.text }])
+await zc.postEvents(AGENT_ID, row.session_id, [{
+  type: 'user.message', content: req.body.text,
+  actor: { ref: user.actorRef }, // stable, validated backend mapping; not a credential
+}])
 ```
 
 **You must store the session ids yourself.** `listSessions` is per-agent
@@ -415,12 +420,12 @@ you hand it an id, so the check that this session belongs to this user is yours 
 
 Per-user context belongs in the session, not in the agent - post a `system.message` event to tell
 the agent which plan the user is on or what they just clicked, rather than rewriting the persona.
-One question decides the rest of the shape: can your users share one `/workspace` and one
-agent-scoped memory? If yes, one shared agent is enough; if not - and for most user-facing
-products it is not - you need an agent per user, which is Step 9b.
+Source-reviewed `actor.ref` attributes API messages; session metadata alone does not select it.
+It is not authentication or a file/session access boundary. If users must not share an agent-scope
+`/workspace`, use an agent per user (Step 9b) and keep your own authorization checks.
 
 For streaming, your backend runs `streamEvents` and re-emits to the browser in whatever format your
-UI wants, keeping the last `seq` it forwarded per connection and resuming with `{ after: lastSeq }`
+UI wants, checkpointing the last successfully processed `ev.cursor` and resuming with `{ cursor }`
 - the SDK does not reconnect for you. See `references/events-and-streaming.md` - Reconnecting. If
 this sounds like a week of work, the App Kit already implements all of it; see the SKILL.md section
 "The App Kit path" before building it yourself.
@@ -486,7 +491,8 @@ A version publish reaches every active user's next turn - treat it as a deploy, 
 
 ## Step 10. Tear down a throwaway experiment
 
-Order matters, because `deleteAgent` is a soft delete that stops nothing and cleans up nothing.
+Order matters: `deleteAgent` is a soft delete, not proof that schedules and sandbox resources
+have been cleaned up. Stop and explicitly manage the resources your experiment owns.
 
 ```ts
 // 1. Schedules first - they outlive the agent, and after deletion you still need agentId to
@@ -496,7 +502,8 @@ for (const s of await zc.listSchedules(agentId)) {
   if (id) await zc.deleteSchedule(agentId, id)
 }
 
-// 2. Stop - deleteAgent does not do this, and does not release the sandbox either.
+// 2. Stop. If this throws after desired state was written, read getAgent and reconcile.
+//    Do not treat either stop or soft deletion as proof of sandbox release.
 await zc.stopAgent(agentId)
 
 // 3. Delete the agent.

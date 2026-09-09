@@ -12,47 +12,76 @@
         {
           "name": "imports the real package name",
           "kind": "present",
-          "patterns": ["@zoowork-ai/sdk"]
+          "patterns": [
+            "@zoowork-ai/sdk"
+          ]
         },
         {
           "name": "does not invent a package name or reach for the deprecated one",
           "kind": "absent",
-          "patterns": ["@zoowork/sdk", "@zoowork/agents-sdk", "@zoowork-agents/sdk", "['\"]zoowork['\"]", "@zooclaw"]
+          "patterns": [
+            "@zoowork/sdk",
+            "@zoowork/agents-sdk",
+            "@zoowork-agents/sdk",
+            "['\"]zoowork['\"]",
+            "@zooclaw"
+          ]
         },
         {
           "name": "starts the agent after creating it",
           "kind": "order",
-          "patterns": ["createAgent", "startAgent"]
+          "patterns": [
+            "createAgent",
+            "startAgent"
+          ]
         },
         {
           "name": "waits on desired_state, or lets the SDK do it",
           "kind": "present",
-          "patterns": ["waitUntilRunning", "desired_state"]
+          "patterns": [
+            "waitUntilRunning",
+            "desired_state"
+          ]
         },
         {
           "name": "passes agentId to createSession",
           "kind": "present",
-          "patterns": ["createSession\\(\\s*agentId", "createSession\\(\\s*[a-zA-Z_$][\\w$]*\\s*,"]
+          "patterns": [
+            "createSession\\(\\s*agentId",
+            "createSession\\(\\s*[a-zA-Z_$][\\w$]*\\s*,"
+          ]
         },
         {
           "name": "ends the turn on run.finished instead of waiting for the stream to close",
           "kind": "present",
-          "patterns": ["isRunFinished", "run\\.finished"]
+          "patterns": [
+            "isRunFinished",
+            "run\\.finished"
+          ]
         },
         {
           "name": "does not build the reply out of delta frames",
           "kind": "absent",
-          "patterns": ["\\.delta\\??\\.", "\\bdelta\\s*\\+="]
+          "patterns": [
+            "\\.delta\\??\\.",
+            "\\bdelta\\s*\\+="
+          ]
         },
         {
           "name": "reads assistant text through the SDK rather than digging into payload",
           "kind": "present",
-          "patterns": ["assistantText\\(", "agent\\.assistant"]
+          "patterns": [
+            "assistantText\\(",
+            "agent\\.assistant"
+          ]
         },
         {
           "name": "stops before deleting",
           "kind": "order",
-          "patterns": ["stopAgent", "deleteAgent"]
+          "patterns": [
+            "stopAgent",
+            "deleteAgent"
+          ]
         }
       ]
     },
@@ -66,47 +95,75 @@
         {
           "name": "puts the system prompt into persona.docs",
           "kind": "present",
-          "patterns": ["persona", "docs"]
+          "patterns": [
+            "persona",
+            "docs"
+          ]
         },
         {
           "name": "uploads the skills through the SDK",
           "kind": "present",
-          "patterns": ["uploadSkill"]
+          "patterns": [
+            "uploadSkill"
+          ]
         },
         {
           "name": "passes a scope on upload",
           "kind": "present",
-          "patterns": ["scope:\\s*['\"](org|personal)['\"]"]
+          "patterns": [
+            "scope:\\s*['\"](org|personal)['\"]"
+          ]
         },
         {
           "name": "surfaces the zip top-level directory rule",
           "kind": "present",
-          "patterns": ["top-level", "top level", "directory name", "frontmatter"]
+          "patterns": [
+            "top-level",
+            "top level",
+            "directory name",
+            "frontmatter"
+          ]
         },
         {
           "name": "attaches after uploading",
           "kind": "order",
-          "patterns": ["uploadSkill", "putAgentSkill"]
+          "patterns": [
+            "uploadSkill",
+            "putAgentSkill"
+          ]
         },
         {
           "name": "verifies the attachment rather than trusting the response",
           "kind": "present",
-          "patterns": ["listAgentSkills"]
+          "patterns": [
+            "listAgentSkills"
+          ]
         },
         {
           "name": "uses an idempotency key so a re-run does not create a second agent",
           "kind": "present",
-          "patterns": ["dempotency", "idempotencyKey"]
+          "patterns": [
+            "dempotency",
+            "idempotencyKey"
+          ]
         },
         {
           "name": "does not invent client-executed custom tools",
           "kind": "absent",
-          "patterns": ["custom_tool", "customTool", "type:\\s*['\"]custom['\"]"]
+          "patterns": [
+            "custom_tool",
+            "customTool",
+            "type:\\s*['\"]custom['\"]"
+          ]
         },
         {
           "name": "keeps the key server-side",
           "kind": "absent",
-          "patterns": ["VITE_ZOOWORK", "NEXT_PUBLIC_ZOOWORK", "REACT_APP_ZOOWORK"]
+          "patterns": [
+            "VITE_ZOOWORK",
+            "NEXT_PUBLIC_ZOOWORK",
+            "REACT_APP_ZOOWORK"
+          ]
         }
       ]
     },
@@ -114,18 +171,23 @@
       "id": 3,
       "name": "export-a-long-transcript",
       "prompt": "Our support agent has sessions that run to several hundred messages. Write a function that takes an agent id and a session id and exports the complete transcript of that session to a JSON file. It has to be complete - we're using it for compliance review.",
-      "expected_output": "Code that either calls listAllEvents, or pages listEventsPage on the cursor until hasMore is false, or uses getSession with history. A complete two-sided export should include the echoed user.message events, not just the assistant side. Must not call listEvents once and treat the result as the whole session.",
+      "expected_output": "Use listAllEvents, or loop listEventsPage with hasMore and nextCursor until exhausted. Include both user and assistant messages. getSession({history:true,limit}) is only a bounded recent window, not a complete export.",
       "files": [],
       "assertions": [
         {
           "name": "reads the whole session rather than one page",
           "kind": "present",
-          "patterns": ["listAllEvents", "listEventsPage", "nextCursor", "history:\\s*true"]
+          "patterns": [
+            "\\blistAllEvents\\s*\\(",
+            "(?=[\\s\\S]*\\blistEventsPage\\s*\\()(?=[\\s\\S]*\\b(?:while|for)\\s*\\()(?=[\\s\\S]*\\bhasMore\\b)(?=[\\s\\S]*\\bcursor\\s*[:=][\\s\\S]*\\bnextCursor\\b)"
+          ]
         },
         {
           "name": "does not treat a single listEvents call as complete",
           "kind": "absent",
-          "patterns": ["listEvents\\([^)]*\\)\\s*;?\\s*\\n[^\\n]*writeFile"]
+          "patterns": [
+            "listEvents\\([^)]*\\)\\s*;?\\s*\\n[^\\n]*writeFile"
+          ]
         }
       ]
     },
@@ -139,17 +201,32 @@
         {
           "name": "does not invent a custom tool type or tool-result event",
           "kind": "absent",
-          "patterns": ["user\\.custom_tool_result", "type:\\s*['\"]custom['\"]", "tool_result"]
+          "patterns": [
+            "user\\.custom_tool_result",
+            "type:\\s*['\"]custom['\"]",
+            "tool_result"
+          ]
         },
         {
           "name": "says plainly that this is not supported",
           "kind": "present",
-          "patterns": ["not supported", "does not exist", "no custom tool", "isn't supported", "is not available"]
+          "patterns": [
+            "not supported",
+            "does not exist",
+            "no custom tool",
+            "isn't supported",
+            "is not available"
+          ]
         },
         {
           "name": "offers one of the two real alternatives",
           "kind": "present",
-          "patterns": ["MCP", "run\\.finished", "next turn", "user\\.message"]
+          "patterns": [
+            "MCP",
+            "run\\.finished",
+            "next turn",
+            "user\\.message"
+          ]
         }
       ]
     },
@@ -157,28 +234,38 @@
       "id": 5,
       "name": "reconnect-a-dropped-stream",
       "prompt": "Our ZooWork event stream keeps dying partway through long tasks and we lose the rest of the answer. We're using streamEvents in a loop. Make it survive a dropped connection.",
-      "expected_output": "A wrapper that remembers the last seq seen and re-opens the stream with { after: lastSeq }, distinguishing a caller abort from a dropped connection, rather than restarting from the beginning or de-duplicating by hand.",
+      "expected_output": "A bounded reconnect loop uses the opaque ev.cursor as a cursor query option, checkpoints after processing, respects caller cancellation and handles structured or non-JSON open errors. No new after/seq-based reconnect or Last-Event-ID-only public-gateway replay.",
       "files": [],
       "assertions": [
         {
-          "name": "resumes from the last seq",
+          "name": "resumes using a cursor option",
           "kind": "present",
-          "patterns": ["after:\\s*last", "after:\\s*[a-zA-Z_$][\\w$]*Seq", "lastSeq"]
+          "patterns": [
+            "streamEvents\\([\\s\\S]*?\\{[\\s\\S]*?\\bcursor\\b"
+          ]
         },
         {
-          "name": "reads the cursor off the event",
+          "name": "reads the opaque cursor from an event",
           "kind": "present",
-          "patterns": ["\\.seq"]
+          "patterns": [
+            "\\b(?:ev|event|e)\\.cursor\\b"
+          ]
         },
         {
-          "name": "does not rebuild the transcript from scratch on every reconnect",
+          "name": "does not select the legacy after lane",
           "kind": "absent",
-          "patterns": ["after:\\s*0\\b"]
+          "patterns": [
+            "\\bafter\\s*:\\s*(?:0\\b|last\\w*|[a-zA-Z_$][\\w$]*Seq\\b|[a-zA-Z_$][\\w$]*\\.seq\\b)"
+          ]
         },
         {
           "name": "respects an abort instead of reconnecting forever",
           "kind": "present",
-          "patterns": ["signal", "abort", "Abort"]
+          "patterns": [
+            "signal",
+            "abort",
+            "Abort"
+          ]
         }
       ]
     },
@@ -192,22 +279,176 @@
         {
           "name": "gives the real console URL instead of guessing a signup page",
           "kind": "present",
-          "patterns": ["zoowork\\.ai/claw-settings\\?tab=account-api-keys"]
+          "patterns": [
+            "zoowork\\.ai/claw-settings\\?tab=account-api-keys"
+          ]
         },
         {
           "name": "warns the secret is shown exactly once",
           "kind": "present",
-          "patterns": ["[Ss]hown (exactly )?once", "only (be )?shown once", "[Cc]opy (it|the (key|secret)) (immediately|right away|now)"]
+          "patterns": [
+            "[Ss]hown (exactly )?once",
+            "only (be )?shown once",
+            "[Cc]opy (it|the (key|secret)) (immediately|right away|now)"
+          ]
         },
         {
           "name": "has the user save the key themselves rather than paste it into chat",
           "kind": "present",
-          "patterns": ["not (to )?paste.{0,40}(chat|here|conversation)", "([Dd]on'?t|[Dd]o not|[Nn]ever) (paste|share).{0,60}(chat|here|with me|conversation)", "without (sharing|pasting) (it|the key)"]
+          "patterns": [
+            "not (to )?paste.{0,40}(chat|here|conversation)",
+            "([Dd]on'?t|[Dd]o not|[Nn]ever) (paste|share).{0,60}(chat|here|with me|conversation)",
+            "without (sharing|pasting) (it|the key)"
+          ]
         },
         {
           "name": "verifies the key with the cheap read-only call before real code",
           "kind": "present",
-          "patterns": ["listModels"]
+          "patterns": [
+            "listModels"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "attribute-two-users-without-trusting-input",
+      "prompt": "Two signed-in customers share our ZooWork agent. Show how our Node backend should attribute each user.message, including initial_events. The browser can submit arbitrary JSON. Is this enough to isolate their files and authorize session reads?",
+      "expected_output": "Backend-selected stable actor.ref, never a token or arbitrary browser actor. Explain attribution is not authorization or file/session isolation; metadata alone is insufficient. Keep per-user session authorization and choose separate agents if agent-scope files must not be shared.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "sets an actor reference on the message",
+          "kind": "present",
+          "patterns": [
+            "actor\\s*:\\s*\\{\\s*ref\\s*:"
+          ]
+        },
+        {
+          "name": "does not send a credential as actor.token",
+          "kind": "absent",
+          "patterns": [
+            "actor\\s*:\\s*\\{[^}]*\\btoken\\s*:"
+          ]
+        },
+        {
+          "name": "keeps authorization separate",
+          "kind": "present",
+          "patterns": [
+            "[Aa]uthoriz",
+            "[Aa]uthenticat"
+          ]
+        },
+        {
+          "name": "explains file isolation separately",
+          "kind": "present",
+          "patterns": [
+            "[Ff]ile.{0,90}(isolat|shar)",
+            "(isolat|shar).{0,90}[Ff]ile"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "interval-and-skill-version-contracts",
+      "prompt": "Write TypeScript snippets to create a ZooWork schedule every 60 seconds with a stable ID, inspect an optional linked session from a run, and upload a new version of our existing skill ZIP. Print the uploaded version and its state. Can I reuse latest_version from the root skill response?",
+      "expected_output": "Schedule input uses everyMs:60000, not every. Guard optional run.session_id. uploadSkillVersion returns version/state, not root latest_version/status. Do not imply the snippet was live-tested.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "uses interval milliseconds",
+          "kind": "present",
+          "patterns": [
+            "everyMs\\s*:\\s*(60_?000|60\\s*\\*\\s*1000)"
+          ]
+        },
+        {
+          "name": "does not send the old every field",
+          "kind": "absent",
+          "patterns": [
+            "\\bevery\\s*:"
+          ]
+        },
+        {
+          "name": "reads version and state",
+          "kind": "present",
+          "patterns": [
+            "(?=[\\s\\S]*uploadSkillVersion\\s*\\()(?=[\\s\\S]*\\.version\\b)(?=[\\s\\S]*\\.state\\b)"
+          ]
+        },
+        {
+          "name": "checks optional session association",
+          "kind": "present",
+          "patterns": [
+            "(?:if\\s*\\([^)]*session_id|session_id\\s*\\?|session_id\\s*&&)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "channel-allowlist-boundary",
+      "prompt": "I passed allow_from with two sender IDs to addChannel. Can I rely on that as the only access control? Also, does binding Feishu make those conversations inaccessible to our organization API key?",
+      "expected_output": "Public gateway ignores allow_from; it is not an ACL. dm_policy affects channel policy. Separate conversation context does not make IM sessions inaccessible to an org key. Backend end-user authorization remains required.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "identifies ignored allow_from",
+          "kind": "present",
+          "patterns": [
+            "allow_from[\\s\\S]{0,180}ignor",
+            "ignor[\\s\\S]{0,180}allow_from"
+          ]
+        },
+        {
+          "name": "mentions effective dm_policy",
+          "kind": "present",
+          "patterns": [
+            "dm_policy"
+          ]
+        },
+        {
+          "name": "retains backend authorization",
+          "kind": "present",
+          "patterns": [
+            "[Bb]ackend[\\s\\S]{0,180}authoriz",
+            "authoriz[\\s\\S]{0,180}[Bb]ackend"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "invalid-write-versus-no-op-interrupt",
+      "prompt": "postEvents sometimes rejects and sometimes returns accepted:false. Show a TypeScript handler that distinguishes an invalid event body from cancelling a session with no run in flight. Should I retry either one?",
+      "expected_output": "Catch ZooworkError HTTP400 for invalid input, not transient retry. A valid interrupt with no run returns 202 accepted:false as a no-op. Do not promise atomic rollback for a batch.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "handles HTTP400 as a thrown error",
+          "kind": "present",
+          "patterns": [
+            "(?=[\\s\\S]*\\bcatch\\b)(?=[\\s\\S]*\\.status\\s*===?\\s*400)"
+          ]
+        },
+        {
+          "name": "handles a nonaccepted receipt separately",
+          "kind": "present",
+          "patterns": [
+            "\\.accepted\\s*===?\\s*false",
+            "accepted\\s*:\\s*false"
+          ]
+        },
+        {
+          "name": "does not advise retrying invalid input unchanged",
+          "kind": "present",
+          "patterns": [
+            "[Dd]o not retry",
+            "[Dd]on't retry",
+            "[Ff]ix (the )?(body|input|event)",
+            "[Nn]o.?op"
+          ]
         }
       ]
     }

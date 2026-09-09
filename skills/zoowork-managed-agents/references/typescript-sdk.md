@@ -1,15 +1,15 @@
 # TypeScript SDK surface
 
-All 58 methods on `ZooworkClient`, grouped by area, signatures exactly as `src/client.ts` declares
+All 62 methods on `ZooworkClient`, grouped by area, signatures exactly as `src/client.ts` declares
 them. The package is `@zoowork-ai/sdk` - ESM only (no CJS `require` condition, no subpath
 exports), zero runtime dependencies, `engines.node >= 20`, shipping `dist/index.d.ts`, which is the
 authority over anything here. `SKILL.md` has the mandatory flow; this file is for looking up a
 signature, a return shape, or whether a method exists.
 
-Twelve runtime values are exported and a test pins the list, so an import outside it fails:
+Thirteen runtime values are exported and a test pins the list, so an import outside it fails:
 `createZooworkClient`, `DEFAULT_BASE_URL`, `ZooworkError`, `SESSION_EVENT_TYPES`, `normalizeEvent`,
 `isRunFinished`, `runOutcome`, `messageText`, `assistantText`, `thinkingText`, `toolCall`,
-`parseSSE`. Everything else is a `type`, and there are no error-code constants - see Errors.
+`parseSSE`, `PUBLIC_INPUT_EVENT_TYPES`. Everything else is a `type`, and there are no error-code constants - see Errors.
 
 ## Client construction
 
@@ -38,7 +38,11 @@ past it and builds a client that sends an empty bearer and 401s on the first cal
 environment-variable path maps `''` to unset. `DEFAULT_BASE_URL` already includes the `/service/v1`
 version prefix; appending another `/v1` 404s every call. An `Idempotency-Key` header is sent only
 when the optional key argument is truthy (`createAgent`, `createSession`, `createSchedule`,
-`createEnvironment`, `createEnvironmentVersion`, `uploadSkill`, `uploadSkillVersion`).
+ `createEnvironment`, `createEnvironmentVersion`, `uploadSkill`, `uploadSkillVersion`).
+Sending a header is not an exactly-once guarantee. Source-reviewed creation contracts use HTTP
+keys for Agent, Session and Environment; schedules converge on stable IDs and identical definitions;
+skill creation rejects duplicate names with 409; skill versions deduplicate content.
+`postEvents` uses an `idempotency_key` inside each event body instead.
 
 ## Models
 
@@ -59,7 +63,7 @@ listAgents(opts?: { labels?: Record<string, string>; page?: number }): Promise<A
 getAgent(agentId: string): Promise<AgentRecord>
 updateAgent(agentId: string, sections: Record<string, unknown>): Promise<AgentRecord>  // per-section PUT; bumps config_version on every call
 deleteAgent(agentId: string): Promise<void>                     // 204; does NOT remove the agent's schedules - delete those yourself first
-startAgent(agentId: string): Promise<{ warnings: string[] }>    // warnings are informational, never a failure
+startAgent(agentId: string): Promise<{ warnings: string[] }>    // successful warnings are informational; non-2xx still throws
 stopAgent(agentId: string): Promise<{ warnings: string[] }>     // does not clear environment_locked, does not remove schedules
 waitUntilRunning(agentId: string, opts?: { timeoutMs?: number; intervalMs?: number; signal?: AbortSignal }): Promise<AgentRecord>
 ```
@@ -80,8 +84,10 @@ no-op one, and so does attaching or detaching a skill - so a version that moved 
 your own section changed.
 
 **`updateAgent` merges per section.** `sections` is the declared config keyed by section, so sending
-only `model` leaves `persona`, `labels`, `mcp` and the rest untouched. Within a section the value is
-replaced, not merged, so a partial `persona` drops the docs you left out. All of `AgentResource` is
+only `model` leaves `persona`, `labels`, `mcp` and the rest untouched. Plain-object sections shallow-merge one level: updating
+`labels: { tier: 'paid' }` keeps an existing `labels.region`. Nested objects, arrays and scalars
+replace their values, so sending `persona.docs` replaces that whole array. `tool_policy` and
+`system_prompt` replace their entire sections. These rules are source-reviewed. All of `AgentResource` is
 optional except `name: string`:
 
 | Field | Type | Note |
@@ -117,30 +123,21 @@ any runtime the SDK targets, so a stalled gateway parks such a loop forever. The
 `actual_state`: it reports chat-channel health, `running` is not one of its values, and an API-only
 agent sits at `activating` permanently.
 
+Successful start/stop responses may contain warnings, but HTTP and transport failures still throw.
+Source-reviewed stop behavior can write desired state before a later step fails: read `getAgent`
+after an uncertain failure and reconcile. Soft deletion is not resource cleanup.
+
 ## Channels
 
-Bind chat platforms (Feishu/Lark) to an API-created agent, so the same agent also answers
-people in the chat app. Verified against a live deployment 2026-08-25. Requires a gateway
-release still rolling out - a deployment without it answers 404 in a DIFFERENT
-envelope (`{"error":{"type":"not_found"}}` instead of this family's `{"code","detail"}`),
-which is how you tell "no channels here" from "not found".
+Bind Feishu/Lark, Slack, WeCom and WeChat to an agent. Existing SDK evidence covers generic QR
+methods on 2026-08-28; verify availability on your deployment, since older deployments can return 404.
 
-**Which platforms bind, and what `config` each needs** (probed 2026-08-25):
-
-| platform | `addChannel` | server-driven QR flow | `config` (camelCase) |
-|---|---|---|---|
-| `feishu` | 201 | yes — the only one here | `{appId, appSecret, domain}` when skipping the QR flow |
-| `slack` | 201 | **never will** | `{botToken:'xoxb-…', appToken:'xapp-…'}` both required |
-| `wecom` | 201 | not on this API yet | `{botId, secret}` both required |
-| `weixin`/`wechat` | **400** `channel.weixin_setup_required` | not on this API yet | — cannot bind here |
-| anything else | **400** `channel.invalid_request` | — | — |
-
-The two "no QR flow" cells are different facts. **Slack cannot have one**: a Slack app is
-created by a person on api.slack.com and its tokens only ever exist in that person's browser,
-so any guided setup — including the one in the ZooWork app — ends by having them paste the same
-two tokens you pass to `addChannel`. Slack therefore loses nothing here. **WeCom and WeChat do
-have QR flows in the product**, just not exposed on this API; WeCom still binds via
-`addChannel`, WeChat cannot be bound at all.
+| Platform | Explicit `addChannel` config | Guided QR setup |
+|---|---|---|
+| `feishu` | `{ appId, appSecret, domain }` | `startChannelSetup(id, 'feishu', opts)`; Feishu aliases remain |
+| `slack` | `{ botToken, appToken }` | No guided SDK flow; obtain app tokens separately |
+| `wecom` | `{ botId, secret }` | `startChannelSetup(id, 'wecom', opts)` |
+| `weixin` / `wechat` | Refused with `400 channel.weixin_setup_required` | Use `'weixin'` for setup |
 
 ```ts
 listChannels(agentId): Promise<AgentChannel[]>                       // [] for a pure API agent
@@ -148,11 +145,24 @@ addChannel(agentId, { platform, account?, display_name?, dm_policy?, group_polic
 updateChannel(agentId, platform, { account?, dm_policy?, group_policy?, enabled? }?): Promise<AgentChannel>
 removeChannel(agentId, platform, { account? }?): Promise<void>       // account defaults to 'default'
 
+startChannelSetup(agentId, platform: GuidedSetupPlatform, input?: ChannelSetupInput): Promise<ChannelSetupSession>
+pollChannelSetup(agentId, platform: GuidedSetupPlatform, sessionId): Promise<ChannelPollResult>
+cancelChannelSetup(agentId, platform: GuidedSetupPlatform, sessionId): Promise<void>
+waitForChannelSetup(agentId, platform: GuidedSetupPlatform, sessionId, { timeoutMs?, signal?, onPoll? }?): Promise<ChannelPollResult>
+
 startFeishuSetup(agentId, { brand?, account?, dm_policy?, group_policy? }?): Promise<FeishuSetupSession>
-pollFeishuSetup(agentId, sessionId): Promise<FeishuPollResult>
+pollFeishuSetup(agentId, sessionId): Promise<ChannelPollResult>
 cancelFeishuSetup(agentId, sessionId): Promise<void>
-waitForFeishuSetup(agentId, sessionId, { timeoutMs?, signal?, onPoll? }?): Promise<FeishuPollResult>
+waitForFeishuSetup(agentId, sessionId, { timeoutMs?, signal?, onPoll? }?): Promise<ChannelPollResult>
 ```
+
+For generic setup, `GuidedSetupPlatform` is `'feishu' | 'wecom' | 'weixin'`.
+Feishu returns `verification_uri_complete`; WeCom and WeChat return `qrcode_url`.
+WeChat may return an inline `data:image/…` payload: render that as an image, not a QR-encoded URL.
+Only Feishu reads `brand`; Feishu and WeCom read `account` and group policy. WeChat reads
+`dm_policy` (`open` or `disabled`) and fixes account/group policy server-side.
+Bound the wait using `timeoutMs: setup.expires_in * 1000` and an AbortSignal. Terminal body
+statuses are returned; HTTP failures, removed setup sessions, timeout and cancellation throw.
 
 The Feishu QR device flow: `startFeishuSetup` answers `{ session_id, verification_uri_complete,
 expires_in, poll_interval }`. **The caller owns the UI** - render `verification_uri_complete`
@@ -172,10 +182,11 @@ if (done.status !== 'success') report(done.status) // 'expired' | 'denied' | 'er
 unknown statuses as still-in-flight. Observed defaults: `expires_in: 600`, `poll_interval: 5`.
 `brand: 'lark'` really switches the URI host to `open.larksuite.com`, and must match the
 workspace the person approves it in. The non-QR path is `addChannel` with the platform app's
-own credentials in `config` (platform-specific keys, passed through). `allow_from` is
-write-once at create - updates cannot touch it.
+own credentials in `config` (platform-specific keys, passed through). `allow_from` is retained for SDK compatibility but ignored by the public gateway.
+Source-reviewed: effective policy comes from `dm_policy`; this is not an enforced sender
+allowlist. Do not use it as an authorization boundary.
 
-Seven facts that bite, all of them verified the hard way:
+Channel constraints (recorded observations unless marked source-reviewed):
 
 - **`account` names the binding, and the name is unique per USER across every agent.** One
   active binding per (owner, platform, account), so taking `feishu`/`default` on one agent
@@ -187,9 +198,8 @@ Seven facts that bite, all of them verified the hard way:
   QR path the clash lands AFTER someone has scanned, leaving a freshly registered Feishu app
   behind in their workspace.
 
-- **WeChat cannot be bound through this API.** `weixin`/`wechat` answer
-  `400 channel.weixin_setup_required` telling you to use a QR flow, and that flow does not
-  exist here (`/channels/weixin/setup` is a 404). Do not follow the error message.
+- **WeChat is QR-only.** Use `startChannelSetup(agentId, 'weixin')`, then the generic poll/wait
+  methods. Passing `weixin` or `wechat` to `addChannel` still fails.
 
 - **`addChannel`'s `201` means STORED, not WORKING.** Credentials are NOT validated at bind
   time: deliberately bogus ones returned `201` with `health:'unknown'`/`status:'configured'`,
@@ -204,7 +214,9 @@ Seven facts that bite, all of them verified the hard way:
   new one), `channel.not_found` (agent has no binding on that platform),
   `service_api.not_found` (unknown agent, or unknown action). Match the `code`, not the status.
 - **A chat conversation and an API session are separate sessions with separate context.**
-  Binding a channel does not let API calls read the Feishu conversation or inject into it.
+  This is context separation, not access isolation. Source-reviewed public reads use organization
+  authorization; a session's channel does not hide it from an org key. Your backend must authorize
+  each end user. IM sessions reject caller-supplied `actor`.
 - **`actual_state` starts moving once a channel is bound** - it reports that channel's
   connectivity. It is STILL not an API-readiness signal; keep gating on `desired_state`.
 
@@ -242,7 +254,7 @@ deleteSession(agentId: string, sessionId: string): Promise<void>   // soft delet
 **There is no `patchSession`, on purpose.** `PATCH` is not proxied by the gateway at all (its
 catch-all registers GET/POST/PUT/DELETE), so it answers 405. Session `metadata` is write-once, at
 `createSession`; mutable per-conversation state belongs in your own store keyed by `session_id`. The
-run outcome is `run_status`, and it is on **both** surfaces - `listSessions` rows and `getSession`
+run outcome is `run_status` (nullable when no latest run exists, source-reviewed), and it is on **both** surfaces - `listSessions` rows and `getSession`
 alike, so a read already has it and needs no second call. The decoy is `status`: `null` on
 `getSession`, absent from list rows entirely, and carrying `running` only on the `createSession`
 receipt. Asking for `history: true` populates `history?: SessionHistoryEntry[]`, the at-rest
@@ -251,6 +263,9 @@ whose `entry_type` is
 `message`. `archiveSession` flips `archived` to `true` (the receipt is `{ session_id, archived }`,
 and a later read still answers `archived: true`); afterwards writes answer `409 session_archived`
 while reads keep working, so interrupt an in-flight run first or the archive races it.
+
+Source-reviewed: `pending_approvals?: number` is a count, not an approval array. Use
+`listApprovals` for records. This is typed source evidence, not a recorded pending approval.
 
 ## Events
 
@@ -285,7 +300,7 @@ inputs) - old stored cursors only.
 `streamEvents` opens exactly one request and yields until the body ends. It does **not** reconnect,
 retry or back off; when the server closes on idle the generator returns, and resuming is your loop
 calling it again with `{ cursor }` from the last event's `cursor` token. A non-2xx response throws
-a `ZooworkError` with no `type`; an abort via `opts.signal` ends the generator cleanly rather than
+a `ZooworkError` parsed by the shared HTTP parser, with optional `type` and diagnostics; an abort via `opts.signal` ends the generator cleanly rather than
 throwing.
 
 ## Skills
@@ -303,7 +318,7 @@ uploadSkillVersion(
   skillId: string,
   zip: Blob | ArrayBuffer | Uint8Array,
   opts?: { fileName?: string; description?: string; idempotencyKey?: string },
-): Promise<SkillRecord>
+): Promise<SkillVersionRecord>
 listSkills(opts?: { scope?: 'org' | 'personal' | 'global' | string; q?: string; page?: number }): Promise<SkillRecord[]>
 deleteSkill(skillId: string): Promise<void>   // 204, no in-use guard: agents holding it just lose it
 
@@ -314,8 +329,7 @@ deleteAgentSkill(agentId: string, skillId: string): Promise<void>
 ```
 
 `uploadSkill`'s `opts` is not optional because `scope` is mandatory, and it may only be `org` or
-`personal` - `global` and `pack` answer 403, published through an admin surface the gateway does not
-proxy. This is the only path by which an API-key caller adds a skill an agent will load. **The zip's
+`personal` - other values are rejected by the public gateway with 400 (source-reviewed). This is the only path by which an API-key caller adds a skill an agent will load. **The zip's
 single top-level directory name must equal the `name` in `SKILL.md`'s frontmatter** (compared case-
 and underscore-insensitively), or the upload is a 400 reading like
 `top-level directory 'my-test-skill' must match SKILL.md name 'market-research'`. So
@@ -323,6 +337,15 @@ and underscore-insensitively), or the upload is a 400 reading like
 `name: market-research`; a zip whose root is the skill (`SKILL.md` at the top) is also accepted.
 `SKILL.md` must be non-empty and declare both `name` and `description`. Limits: 50 MB expanded, zip
 only, encrypted zips rejected.
+
+Source-reviewed: root `uploadSkill` takes its description from ZIP frontmatter; options
+`description` is ignored on create. Duplicate scope/name creation returns 409, not an upsert.
+Read back after an uncertain create. Version upload deduplicates identical content, rather than
+relying on the HTTP idempotency header.
+
+`uploadSkillVersion` returns `SkillVersionRecord` with `skill_id`, `version: string | number`
+and `state`, not `SkillRecord.latest_version/status`. These fields require the corresponding
+SDK contract; their deployment behavior remains unverified here.
 
 `uploadSkillVersion` adds a version to an existing skill; the frontmatter `name` must match that
 skill's name, and `description` overrides the frontmatter one. **Agents that installed the skill
@@ -401,8 +424,10 @@ runtime so the same read-tweak-write round trip works from JavaScript too. The l
 expensive one: `scheduleSpec` is the only place a read puts the cadence, so echoing it back answers
 200 while leaving the old cron expression in place, and every sibling field in the body applies -
 the update looks like it worked. **To change the cadence send `schedule`, the input vocabulary.**
-`ScheduleSpec` has three kinds (`cron`, `every`, `at`) and only `cron` has its field names pinned by
-the engine reference. Cron is five fields; macros and a `CRON_TZ=` prefix are rejected, and overlap
+`ScheduleSpec` has three kinds (`cron`, `every`, `at`). Source-reviewed interval input is
+`{ kind: 'every', everyMs: 60_000 }`, with optional `anchorMs` (epoch milliseconds).
+The old `every` field is not the wire contract: migrate explicitly rather than guessing units.
+This is a type correction, not a live-verified schedule run. Cron is five fields; macros and a `CRON_TZ=` prefix are rejected, and overlap
 is fixed to skip server-side, so a fire landing on a still-running one is dropped, not queued.
 
 `createSchedule` is 409 when you re-create an existing `schedule_id` with a **different**
@@ -415,9 +440,9 @@ them yourself first or they keep firing against a deleted agent. `triggerSchedul
 `listScheduleRuns`. Those rows mix two shapes discriminated by `source`: `temporal` rows are
 dispatch records (`scheduled_at` / `taken_at` / `workflow_id` / `temporal_run_id`) saying nothing
 about the outcome, `run_projection` rows are outcome records (`fired_at` / `status` /
-`consecutive_errors`). Neither carries `session_id`, so you cannot walk from a fire to the session
-it created - list the agent's sessions and match `channel: 'cron'` against the `session_key` prefix
-`agent:{agent_id}:cron:{schedule_id}:`.
+`consecutive_errors`). Source-reviewed rows may carry `session_id` when associated with a session. It is optional,
+not guaranteed for dispatch or command runs. Follow it when present; otherwise inspect sessions
+with `channel: 'cron'` and the relevant schedule prefix. Do not manufacture an association.
 
 **A cron job can carry an outcome gate.** `payload.outcome` on `ScheduleInput` (and the agent-level
 default at `resource.outcome`) says what "done" looks like:
@@ -450,7 +475,7 @@ resolveApproval(
   agentId: string,
   approvalId: string,
   input: { decision: ApprovalDecision; resolvedBy?: string },
-): Promise<Record<string, unknown>>
+): Promise<ApprovalRecord>
 
 export type ApprovalDecision = 'allow-once' | 'allow-always' | 'deny'
 ```
@@ -460,10 +485,13 @@ decisions yourself if you need an audit trail. Where no approval signaler is con
 answers `501 not_configured`, a deployment property your code cannot fix. Two shapes describe the
 same act and do not line up - this REST resource, and the `user.tool_confirmation` event you write
 with `postEvents`. They are not two views of one object, so do not correlate an `approval_id` with a
-tool-call id. **The loop has never been closed end to end:** the only observation is a 200 with an
-empty `approvals` array, so `ApprovalRecord`'s field names are unverified. Do not build on it, and
-note that a run parked on an approval burns its whole turn budget waiting. The reasoning, and what
-to do instead, is in `references/not-supported.md` - Approvals.
+tool-call id. **The end-to-end loop remains unverified.** Recorded approval lists are empty.
+Source-reviewed fields include `arguments_preview?: string`, `requested_at`, `timeout_at`,
+`allowed_decisions`, `resolved_by`, `resolved_at`, `decision` and `signaled`;
+`created_at` is kept only for legacy compatibility. Optional fields can be absent.
+A 202 resolve with `signaled: true` can still have `status: 'pending'`: this acknowledges
+signaling, not action completion. Deployment support and turn-budget behavior need separate
+verification. Keep dangerous actions gated; see `references/not-supported.md` - End-to-end human approval.
 
 ## System prompt
 
@@ -530,7 +558,7 @@ createEnvironmentVersion(
   config: EnvironmentConfig,     // a bare config; the SDK wraps it as { resource: { config } }
   idempotencyKey?: string,
 ): Promise<EnvironmentVersionRecord>
-getEnvironmentVersion(environmentId: string, version: number): Promise<EnvironmentVersionRecord>
+getEnvironmentVersion(environmentId: string, version: number, opts?: { resourceClass?: 'starter' | 'pro' | 'ultra' }): Promise<EnvironmentVersionRecord>
 
 // resource.config accepts EXACTLY these four keys; anything else is 400 invalid_environment_config,
 // which is why EnvironmentConfig has no index signature and a stray key is a compile error.
@@ -546,19 +574,20 @@ Files land under `/opt/zooclaw/environment/`, and a top-level `bin/*` marked exe
 into `/usr/local/bin`. No user-defined secrets, env vars, or start hooks (the platform injects
 its own runtime credentials for built-in skills; that layer is internal and not extensible). **Poll
 `getEnvironmentVersion` and read `status`, not `state`**: there is no `state` field on a version, so
-a loop written against one compares `undefined` to `'ready'` forever and never terminates. Builds
-walk `queued -> submitting -> building -> verifying -> ready`, and any phase can land in `failed`
-(`failure_stage` and `failure_message` say which). Pin only a `ready` version, or `createAgent`
+a loop written against one compares `undefined` to `'ready'` forever and never terminates. Source-reviewed aggregate states include `partial_ready`: some resource classes are ready,
+while others may still be building or already failed. It can be transient or a partial terminal
+result. Read a class with optional `resourceClass` and choose an explicit readiness policy.
+Bound the entire polling loop AND each request, accept cancellation, and stop on failure or
+timeout. Do not wait on partial readiness forever. Pin only a `ready` version, or `createAgent`
 answers `409 environment_not_ready`. On the Environment row, `latest_version` is the newest version
 **created** - `1` the instant you create an Environment, while that version is still `queued` - and
 `latest_ready_version` is the newest one that finished building, `null` until a build lands. **Pin
 `latest_ready_version`.** `archiveEnvironment` exists mainly to get one character right: the route
 is `POST /environments/{id}:archive`, and a raw `:` makes the engine miss the route and answer 404.
 The SDK sends `%3A` for you; from another language, encode it yourself. `createEnvironmentVersion`
-also reaches a real route, but its request body was never exercised against a live deployment - the
-SDK sends `{ resource: { config } }`, mirroring create, on that symmetry alone, so verify before
-depending on it. Versions are immutable: a retry after a failed build retries that version and keeps
-its attempt log.
+creates a new immutable configuration version using `{ resource: { config } }`, not a
+retry of a failed version. Retrying that same version is a separate operation.
+Builds and the resource-class query still need deployment verification.
 
 ## Credentials
 
@@ -573,7 +602,12 @@ servers only. See `references/not-supported.md` - Credentials and vaults.
 ```ts
 export class ZooworkError extends Error {
   status: number
-  type?: string      // absent, not undefined-valued, when the server sent no code
+  type?: string      // absent when the server sent no code
+  contentType?: string
+  bodySnippet?: string
+  cfRay?: string
+  requestId?: string
+  retryable: boolean
   constructor(status: number, message: string, type?: string)
 }
 ```
@@ -597,5 +631,6 @@ apart. Never match on message text: it is prose, it is not stable, and the same 
 you differently worded depending on which envelope answered. Two more things a `catch` should
 expect: a cross-tenant or unknown id answers **404, not 403**, so a 404 does not mean deleted; and
 two errors never came from a server at all - `waitUntilRunning`'s `408 timeout` and `0 aborted`.
-`streamEvents`' stream-open failure is a third `ZooworkError` you did not get from an error
-envelope, but it does carry the response's real status, with an SDK-written message and no `type`.
+`streamEvents` uses the same error parser on non-2xx open responses: JSON codes and request IDs
+are preserved when available. Non-JSON failures retain status and diagnostic fields. `retryable`
+is a hint, not permission to replay a write or proof the SDK retried it.

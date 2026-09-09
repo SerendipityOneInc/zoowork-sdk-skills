@@ -26,9 +26,9 @@ turn continues with it.
 write-side event that carries a tool result. The write side takes exactly four event types:
 `user.message`, `user.interrupt`, `user.tool_confirmation`, `system.message`. `OutboundEvent.type`
 is typed `string`, so an invented type such as `user.custom_tool_result` compiles cleanly - it just
-has no handler, no reader, and no path to the model. The per-event `accepted` flag in the
-`postEvents` response is the only signal you get back, so do not expect a thrown error to tell you
-that you invented an event type.
+is rejected with HTTP 400, even though the loose type accepts it. Catch that failure.
+A valid `user.interrupt` with no run returns 202 and `accepted: false` instead; the two outcomes
+need different handling. Validation does not make runtime batch effects an atomic transaction.
 
 **This is structural, not a roadmap gap.** A run is a closed decision path: the tool call is chosen
 and recorded before the sandbox executes anything, so handing execution back to your process would
@@ -54,9 +54,10 @@ await zc.createAgent({
 `mcp` is an agent-level declared section, so `updateAgent(agentId, { mcp: [...] })` changes it
 later. Remote HTTP only - `streamable-http` (the default) or `sse`; there is no stdio transport and
 no OAuth. The URL must be publicly reachable: loopback, private ranges, cloud metadata addresses
-and redirects are all refused. A server that fails its catalog probe does not fail the run; it pins
-an empty catalog and emits an `agent.error` event with `kind: 'mcp_connection_failed'`, so a
-silently tool-less agent is the failure mode to watch for.
+and redirects are all refused. A server that fails its catalog probe does not fail the run; it can emit `agent.error` with `kind: 'mcp_connection_failed'` or
+`'mcp_authentication_failed'` and optional `reason` (source-reviewed; retain unknown values).
+Transient failed catalogs can expire so a later resolution probes again. Healthy catalogs remain
+configuration-bound; this is not periodic auto-recovery or a guarantee that business calls retry.
 
 The real limit is identity. `McpServerDeclaration.credential` names a slug for a single static
 bearer token, and the endpoint that would store the secret behind that slug answers 404 through the
@@ -188,20 +189,17 @@ parked and has **not** run; a write-side `user.tool_confirmation` event; and a R
 resource with `listApprovals(agentId, { status: 'pending' })` and `resolveApproval(agentId,
 approvalId, { decision })` where `decision` is one of `allow-once`, `allow-always`, `deny`.
 
-**What actually happens.** The loop has never been observed to close. The only observation against
-a live deployment is a 200 with an empty `approvals` array, because producing a real pending
-approval needs a tool policy that asks for one - so `ApprovalRecord`'s field names are unverified
-and should be read defensively. Where no signaler is configured the route answers
-`501 not_configured`. `status` may only be omitted or `'pending'`, so resolved approvals cannot be
-listed at all. And the REST shape and the event shape do not line up: approvals are a resource,
-`user.tool_confirmation` is an event, they describe the same act in two vocabularies, and no
-mapping between them has been demonstrated. Meanwhile a run parked on an approval sits there
-spending its turn budget waiting.
+**What is known.** Recorded approval lists are empty; the end-to-end loop has not been verified.
+The source-reviewed SDK contract includes `requested_at`, optional string `arguments_preview`,
+`allowed_decisions`, timeout/resolution fields and a resolve receipt. A 202 response with
+`signaled: true` may still be `pending`; it does not prove the tool ran. `created_at` is legacy
+compatibility, not the request timestamp to depend on. Where unsupported, the route returns
+`501 not_configured`. The list filter accepts only omitted status or `pending`.
+Deployment support, REST/event round-trip behavior and turn-budget handling need separate checks.
 
-**Do not build on it.** If a user needs human review, put the wait in your own product: let the
-turn finish, show the proposed action to your reviewer, and post the approved instruction as the
-next `user.message`. That keeps a human-length delay outside a run that is being charged for
-waiting.
+**Keep dangerous actions gated until verified.** If a product cannot depend on this path, let the
+turn finish, show its proposed action to a reviewer in your own product, then post the approved
+instruction as a new message. Do not describe unverified budget behavior as a measured fact.
 
 ---
 
@@ -220,7 +218,8 @@ organization, so an agent a colleague created in the same organization is fetcha
 if you know its id but never appears in the list. A fan-out built on `listAgents` silently misses
 those. The durable answer is to keep your own index of agent ids and session ids in your own
 database, keyed by your own user id. You need that index anyway: the platform has no notion of your
-end users, so attributing a session to one is only possible on your side.
+end-user authorization. Source-reviewed `actor.ref` can attribute messages, but it does not
+replace your session ownership index or grant access.
 
 ---
 
@@ -257,10 +256,10 @@ webhook delivery is refused there.
 **What to do instead.** Every streamed event carries a `cursor` resume token that survives
 disconnects. Hold the stream for a live conversation and, when the server closes it on idle, call
 `streamEvents(agentId, sessionId, { cursor })` again - you resume from exactly there, with
-no gap and no duplicate reaching your loop (the server may re-send the boundary frame; the
-generator drops it). For a background job, poll `listEventsPage(agentId, sessionId, { cursor })`
-on whatever interval suits you and follow `nextCursor`, with the same guarantee. Webhook consumers
-usually implement that de-duplication themselves with an idempotency table; the cursor supplies it.
+server-side log resume. Checkpoint after processing; within-generator de-duplication does not
+make your application's effects exactly-once. For a background job, poll `listEventsPage(agentId, sessionId, { cursor })`
+on a bounded, backoff-aware interval and follow `nextCursor`. An idempotency table or atomic
+application checkpoint may still be needed for side effects.
 What you do give up is process-free operation: you pay for the connection or the poll, and someone
 has to run the loop.
 See `references/events-and-streaming.md` - Reconnecting.

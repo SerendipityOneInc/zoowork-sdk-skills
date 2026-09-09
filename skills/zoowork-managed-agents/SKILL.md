@@ -185,14 +185,15 @@ history-reading path, and the reconnect pattern.
   friends) alongside the agent's output, so a message list renders from this one surface - no
   client-side copy of what you sent is needed. An input event's `processedAt` is `null` while
   queued and a timestamp once the agent has consumed it.
-- **Read events through the helpers, not by hand.** The wire spells the same event differently
-  per lane and transport, and no shape carries a top-level `type`. Everything the SDK returns is
+- **Read events through the helpers, not by hand.** Default REST and SSE both use snake_case;
+  legacy SSE can be camelCase. No shape carries a top-level `type`. Everything the SDK returns is
   already normalized to `{ seq, eventType, payload, runId?, turn?, createdAt?, id?, processedAt?,
   cursor? }`. Use `assistantText`, `messageText`, `thinkingText`, `toolCall`, `isRunFinished`,
   `runOutcome` rather than reaching into `payload` yourself.
 - **Resume with each event's `cursor` token.** Remember the last one you saw. Reconnect with
-  `streamEvents(agentId, sessionId, { cursor })` and the server replays from right after it, so
-  nothing is lost; it may re-send the boundary frame, and the generator drops that for you.
+  `streamEvents(agentId, sessionId, { cursor })`. Treat the token as opaque; the public gateway
+  does not forward `Last-Event-ID`. Checkpoint after processing; cursor resume does not make your
+  application's side effects exactly-once.
   (`{ after: seq }` still works but selects the deprecated engine-only lane - old stored cursors
   only.) **The SDK does not reconnect for you** - it opens one request and the generator ends when
   the server closes on idle. Looping over that is the caller's job.
@@ -214,6 +215,14 @@ and `system.message`.
 without appearing as a user turn. It is the supported way to hand an agent state your own
 application owns (the current user's plan, what they just clicked) since there is no memory resource
 to write to.
+
+Source-reviewed: `user.message` (including `initial_events`) accepts `actor: { ref }`.
+Choose a stable opaque end-user reference from authenticated backend state; metadata alone does
+not select the actor. This is attribution, not authentication or session/file access isolation.
+See `references/events-and-streaming.md` for validation and IM restrictions.
+
+Invalid event types or bodies reject with HTTP 400; catch the error. This differs from a valid
+202 response containing `accepted: false`. Do not treat a batch as an atomic transaction.
 
 `user.interrupt` cancels an in-flight run. With no run in flight it answers `accepted: false`, which
 is a normal reply and not an error.
@@ -266,7 +275,7 @@ Uploading a local skill directory and attaching it is the core of
 
 | The user wants to | Read |
 |---|---|
-| A signature, a return shape, or a method you are not certain exists | `references/typescript-sdk.md` - all 58 client methods by area |
+| A signature, a return shape, or a method you are not certain exists | `references/typescript-sdk.md` - all 62 client methods by area |
 | Cron schedules (including the `payload.outcome` gate), running a command in the sandbox (`exec`), `wake`, environments, approvals, artifacts, the system prompt, or channels (binding Feishu/Lark) | `references/typescript-sdk.md` - these surfaces appear **nowhere else in this skill**, and each has a trap worth a debugging session (schedule reads and writes speak different vocabularies; `exec` needs an agent-scope sandbox; artifact routes need selectors the SDK derives for you) |
 | To consume the stream, read history, reconnect, or render tool calls | `references/events-and-streaming.md` |
 | To host an agent they built locally, with its skills - or to run an agent per end user and keep one skill updating the whole fleet | `references/deploy-your-agent.md` - **follow it in order, do not summarize it** |
@@ -303,6 +312,8 @@ either over recalling a shape.
   compare string literals, and prefer `status` when you only need the class of failure.
 - **A cross-tenant or unknown id is `404`, not `403`.** So a 404 does not mean deleted. Keep your own
   record of the ids you create.
+- **Start/stop warnings are not the only failure mode.** HTTP and transport failures throw;
+  stop can fail after desired state changes. Read back before retrying uncertain writes.
 - **`deleteAgent()` does not clean up after itself.** It leaves the agent's schedules in place and
   they keep firing. Stop the agent, delete its schedules yourself, then delete it.
 - **`exec(agentId, args)` takes argv, not a shell string.** Use `['bash', '-lc', 'ls /workspace']`
