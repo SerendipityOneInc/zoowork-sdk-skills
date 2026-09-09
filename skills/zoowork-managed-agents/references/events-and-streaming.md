@@ -16,8 +16,9 @@ never reused (gaps are normal - the sequence is strictly increasing, not contigu
 `user.tool_confirmation` and `system.message` alongside the engine's output, so the whole
 conversation reconstructs from this one surface. Pagination and stream resume run on cursors: a
 list page's `nextCursor`, or the `cursor` token on each streamed event. Persist the last cursor you
-saw next to your session id - it stays valid across process restarts, so a worker that crashes
-mid-turn picks the turn back up exactly where it stopped.
+successfully processed next to your session id. The token is opaque and is not interchangeable
+with `seq`. A restart can resume the log; atomically checkpoint your own durable effects when
+needed. Resume alone is not an exactly-once guarantee for your application.
 
 The wire spells the same event differently per lane: on the default unified lane both transports
 send one snake_case object (`event_type`, `run_id`, `processed_at`, `created_at`) and the SSE
@@ -49,8 +50,8 @@ Details that decide how you write the consumer:
 - `payload` is always an object, `{}` rather than `undefined` when the frame carried none. Its keys
   are camelCase on both transports - only the envelope differs. `runId`, `turn` and `createdAt` are
   omitted entirely rather than set to `undefined` when absent.
-- `seq` is `-1` when a frame carried no sequence at all. On the SSE lane the `id:` line backfills it,
-  which is why the SDK's parser keeps `id:`; a durable frame should never reach you with `-1`.
+- `seq` is `-1` when no sequence can be read. A numeric legacy SSE ID can backfill it, but an
+  opaque unified ID is a cursor, not a number: never parse it as a sequence.
 
 `normalizeEvent(raw: unknown, sseId?: string): SessionEvent` is exported, so a custom transport
 (a browser `EventSource`, a proxy in another process) can reuse it rather than re-deriving both
@@ -87,11 +88,16 @@ Your own inputs additionally echo back as the four `PUBLIC_INPUT_EVENT_TYPES` (`
 | `agent.command_output` | A command-running tool produced stdout/stderr, at result granularity. | Optional |
 | `agent.patch` | An `apply_patch` tool call succeeded. | Optional |
 | `agent.compaction` | History was compacted to fit the context window. `tokensBefore`, `reason`. | Telemetry only |
-| `agent.error` | An error occurred inside the turn. `errorMessage`, sometimes `kind` and `server`. | Yes - log it, but it is not the verdict |
+| `agent.error` | An error occurred inside the turn. `errorMessage`, sometimes `kind`, `server` and optional `reason`. | Yes - log it, but it is not the verdict |
 | `attachment.created` | A tool produced a file. `source`, `toolName`, `toolCallId`, storage refs. | Yes, if you surface files |
 | `message.outbound` | The agent sent a proactive message (message tool, schedule announce, heartbeat) instead of replying in-session. | Only for proactive agents |
 | `user.message` (echo) | Your own message, echoed into the log. `payload.content` is a block array (`messageText` reads it); `processedAt` is `null` until the agent consumes it. | Yes - the user side of the chat |
 | `user.interrupt` / `user.tool_confirmation` / `system.message` (echo) | Your other inputs, echoed with their payloads. | Optional - render if you show them |
+
+Source-reviewed MCP errors may use `mcp_connection_failed` or `mcp_authentication_failed`.
+Preserve unknown `reason` values. Transient failed catalogs can expire so a later resolution
+may probe again; this is not a periodic recovery guarantee or an automatic business-operation retry.
+Healthy catalogs remain tied to the configuration.
 
 Seven carry real integrations: `run.started`, `run.finished`, `agent.assistant`, `agent.thinking`,
 `agent.tool`, `agent.error` and the echoed `user.message`. Handling only those renders a correct
@@ -183,8 +189,9 @@ What the server gives you in exchange is server-side resume. Every durable frame
 resume token in the SSE `id:` line, handed back as `ev.cursor`; pass `{ cursor }` and the server
 replays the log from right after that event before continuing live - no client-side buffer to
 keep, and no gap if the reconnect takes a while.
-The server may re-send the boundary frame, and the generator drops anything at or below the highest
-`seq` it has already yielded, so you do not write that check yourself. The one subtlety: a caller
+Within one generator, the SDK drops frames at or below its highest yielded `seq`. That state is
+not an application checkpoint and is not retained across a new generator. Persist cursors after
+successful processing and make external side effects idempotent where needed. The one subtlety: a caller
 abort and an idle server close both end the generator the same quiet way, so check the signal to
 tell them apart or a user who cancelled gets reconnected to.
 
@@ -226,12 +233,12 @@ export async function streamTurn(
 
     try {
       for await (const ev of zc.streamEvents(agentId, sessionId, {
-        ...(cursor ? { cursor } : {}), // server replays from the token; a repeated boundary frame is dropped
+        ...(cursor ? { cursor } : {}), // opaque query token; do not replace with after/seq
         signal: attemptCtl.signal,
       })) {
-        cursor = ev.cursor ?? cursor  // advance BEFORE anything that can throw
+        opts.onEvent?.(ev)             // do not checkpoint a failed callback
         text += assistantText(ev)
-        opts.onEvent?.(ev)
+        cursor = ev.cursor ?? cursor   // persist after successful processing
         if (isRunFinished(ev)) {
           const outcome = runOutcome(ev)
           return { ...(outcome ? { outcome } : {}), text, ...(cursor ? { cursor } : {}) }
@@ -256,11 +263,11 @@ export async function streamTurn(
 }
 ```
 
-A non-2xx on the stream open throws `ZooworkError(status, 'events stream HTTP <status>')` with
-**no** `type` field, so match on `.status` here, never on `.type` or the message. Calling the HTTP
-endpoint directly, `?cursor=` is the resume parameter, and the standard `Last-Event-ID` header
-carries the same token - the server writes the `id:` line, so a browser `EventSource` resumes on
-its own. `?after=<seq>` still resumes the deprecated engine-only lane; old stored cursors only.
+A non-2xx stream open uses the same HTTP error parser as other methods: `ZooworkError`
+can carry `type`, `requestId` and diagnostic fields. Keep a status-only fallback for non-JSON
+responses. When calling the public endpoint directly, use `?cursor=`: the public gateway
+does not forward `Last-Event-ID`, so native EventSource header replay is not sufficient.
+`?after=<seq>` selects the deprecated engine-only lane and omits echoed inputs.
 
 ---
 
@@ -388,23 +395,30 @@ read `ev.payload.phase`.
 
 ## Writing into a session
 
-Exactly four event types can be posted, and a type outside the four does not reach the agent. The
-error `type` string for a rejected write has not been recorded, so read the per-event `accepted`
-flag in the response rather than assuming a throw, and if you do match an error, match on `.status`.
+Exactly four event types can be posted. An invalid type or malformed body rejects with HTTP 400,
+so handle a thrown error and use status when the exact code is unknown. A valid 202 response with
+an `accepted: false` receipt is a different outcome. Source review shows input validation before
+effects, but this is not a guarantee of transactional rollback for runtime batch failures.
 Signature: `postEvents(agentId, sessionId, events: OutboundEvent[])` - the agent id comes first on
 every session method, because the route is `/agents/{id}/sessions/{sid}/events`.
 
 | Type | Body | Effect |
 |---|---|---|
-| `user.message` | `content` (non-empty **string**), optional `idempotency_key` (exercised - a same-key retry converges on the same event instead of double-delivering), optional `attachments[]` (not exercised) | Appends a user turn and starts a run |
+| `user.message` | `content` (non-empty **string**), optional `idempotency_key` (exercised - a same-key retry converges on the same event instead of double-delivering), optional `actor: { ref }` (source-reviewed) and `attachments[]` (not exercised) | Appends a user turn and starts a run |
 | `user.interrupt` | no other fields | Aborts the in-flight run; that run ends `run.finished` with `status: 'aborted'` |
 | `user.tool_confirmation` | `approval_id`, `decision`: `allow-once` / `allow-always` / `deny` | Resolves a pending approval |
 | `system.message` | `text` (non-empty string) | Injects a note the model reads on the **next** turn |
 
+Source-reviewed actor rules: only `ref` is accepted inside `actor`, with 1–200 ASCII characters
+matching `[A-Za-z0-9._:@+-]`. If actor is supplied, ref is required; token and unknown actor
+properties are rejected. Omission falls back to the owner. Choose the ref from authenticated
+backend state, not user-submitted JSON. It attributes API messages (including initial messages),
+not authorization or file/session isolation. IM sessions reject caller-supplied actor.
+
 ```ts
 const res = await zc.postEvents(agentId, sessionId, [
   { type: 'system.message', text: "Operator note: the user's plan is Enterprise." },
-  { type: 'user.message', content: 'Which limits apply to me?', idempotency_key: 'msg-7' },
+  { type: 'user.message', content: 'Which limits apply to me?', actor: { ref: 'customer-7' }, idempotency_key: 'msg-7' },
 ])
 if (res.events[0]?.accepted !== true) { /* the event did not take - inspect before streaming */ }
 ```

@@ -47,6 +47,14 @@ Exit status is non-zero when anything failed.
 
 ## Reading the result
 
+### Checking the checker itself
+
+Run `node --test evals/check.test.mjs` for dependency-free regression tests of the CLI.
+The inputs are explicitly synthetic: they exercise false-pass cases such as bounded history
+mistaken for a full export, a single page, and seq/after reconnects. They are not assistant outputs
+and do not establish a skill pass rate. Substantive skill changes still need fresh-session
+no-skill baseline and candidate runs above, plus comparison with the previous skill version.
+
 The checker matches regular expressions over every file in the directory, concatenated. That is
 crude on purpose - it is fast, deterministic, and dependency-free - and it has the failure modes you
 would expect:
