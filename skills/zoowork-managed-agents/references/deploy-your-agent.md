@@ -49,13 +49,15 @@ Decide these at create time. Two of them cannot be undone:
 
 ## Step 1. Choose a model from `listModels()`
 
-Model ids here are prefixed (`litellm/claude-sonnet-5`), so a name recalled from another platform
-is a 400 rather than a fallback. Ask the server what exists.
+Model ids here are prefixed (`litellm/gpt-5.6-terra`), so a name recalled from another platform
+is a 400 rather than a fallback. Ask the server what exists. Omitting the model pins whatever
+platform default is current at create time; the source default is Terra now, but deployment
+catalogs can differ and defaults can rotate.
 
 ```ts
 const models = await zc.listModels()
-const model = models.find((m) => m.model.includes('sonnet'))?.model ?? models[0]?.model
-if (!model) throw new Error('no models available to this key')
+const model = models.find((m) => m.model === 'litellm/gpt-5.6-terra')?.model
+if (!model) throw new Error('choose an explicit model returned by listModels()')
 ```
 
 **Verify:** the list is non-empty and `model` is a full id including its prefix. This call touches
@@ -142,10 +144,11 @@ const running = await zc.waitUntilRunning(agentId, { timeoutMs: 60_000 })
 console.log(running.status?.desired_state) // 'running'
 ```
 
-Do not hand-roll this loop. The readable-looking field, `status.actual_state`, reports chat-channel
-health: `running` is not one of its values, and an API-only agent parks at `activating` for the rest
-of its life, so a loop waiting on it never returns. `waitUntilRunning` polls `desired_state`, bounds
-each in-flight request as well as the gap between polls, and throws a `ZooworkError` with
+Do not hand-roll this loop. The readable-looking field, `status.actual_state`, is a best-effort
+chat-channel health projection: unsupported route-status can produce `active` with zero channel
+counts, while a transient query failure can remain `activating`, and list/GET may briefly differ.
+`running` is not one of its values. `waitUntilRunning` polls `desired_state`, bounds each in-flight
+request as well as the gap between polls, and throws a `ZooworkError` with
 `status: 408` / `type: 'timeout'` when the budget runs out.
 
 **Verify:** `running.status?.desired_state === 'running'`. Nothing else is readiness.
