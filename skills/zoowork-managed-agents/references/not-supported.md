@@ -43,8 +43,13 @@ manifest as `mcp__<server>__<tool>` and really execute.
 await zc.createAgent({
   resource: {
     name: 'support-agent',
-    model: { primary: 'litellm/claude-sonnet-5' },
-    mcp: [{ name: 'orders', url: 'https://mcp.example.com/mcp', transport: 'streamable-http' }],
+    model: { primary: 'litellm/gpt-5.6-terra' },
+    mcp: [{
+      name: 'orders',
+      url: 'https://mcp.example.com/mcp',
+      transport: 'streamable-http',
+      exposure: 'deferred', // omission default; use 'direct' for the first model request
+    }],
     //      ^ no underscore: tool names are `mcp__<server>__<tool>`, so an underscore in the
     //        server name makes the split ambiguous and the server is rejected
   },
@@ -58,6 +63,11 @@ and redirects are all refused. A server that fails its catalog probe does not fa
 `'mcp_authentication_failed'` and optional `reason` (source-reviewed; retain unknown values).
 Transient failed catalogs can expire so a later resolution probes again. Healthy catalogs remain
 configuration-bound; this is not periodic auto-recovery or a guarantee that business calls retry.
+
+`exposure` is either `deferred` (also the omission default) or `direct`; there is no `auto`.
+Deferred tools load through `tool_search` / `tool_describe` and remain available on later turns in
+the same Session. `direct` declares them on the first model request. These loading details are
+source-reviewed, not deployment-verified here.
 
 The real limit is identity. `McpServerDeclaration.credential` names a slug for a single static
 bearer token, and the endpoint that would store the secret behind that slug answers 404 through the

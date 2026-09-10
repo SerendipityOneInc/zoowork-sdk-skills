@@ -120,8 +120,8 @@ const zc = createZooworkClient()
 
 // 1. Ask which models this deployment carries. A recalled id is a 400, not a fallback.
 const models = await zc.listModels()
-const model = models.find((m) => m.model.includes('sonnet'))?.model ?? models[0]?.model
-if (!model) throw new Error('no models available to this key')
+const model = models.find((m) => m.model === 'litellm/gpt-5.6-terra')?.model
+if (!model) throw new Error('choose an explicit model returned by listModels()')
 
 // 2. Create. Ownership comes from your API key - the SDK handles it, nothing to pass.
 const created = await zc.createAgent(
@@ -287,12 +287,17 @@ either over recalling a shape.
 
 ## Common pitfalls
 
-- **Do not poll `actual_state`.** It reports chat-channel health, `running` is not one of its
-  values, and an API-only agent parks at `activating` forever - a loop watching it never returns.
-  `waitUntilRunning()` polls `desired_state` and throws `408`/`'timeout'` on a spent budget.
+- **Do not poll `actual_state`.** It is a best-effort chat-channel health projection, not API
+  readiness. Unsupported route-status can project `active` with zero channel counts; a transient
+  query failure can remain `activating`, and list/GET may briefly differ. `running` is not one of
+  its values. `waitUntilRunning()` polls `desired_state` and throws `408`/`'timeout'` on a spent
+  budget.
 - **There is no custom tool type and no tool-result event.** The agent cannot call back into your
   process mid-turn. `references/not-supported.md` - Client-executed custom tools has the two real
   alternatives (a remote MCP server, or doing the work between turns).
+- **MCP exposure is explicit.** Omit `exposure` or use `'deferred'` to load tools through
+  `tool_search` / `tool_describe`; use `'direct'` to declare them on the first model request.
+  There is no `'auto'`. This does not change the current public-server-only credential boundary.
 - **There is no credential API.** The platform seeds model credentials itself at create, and there
   is no store for your end users' secrets — those belong on your own service.
 - **An Environment choice locks permanently** on first sandbox creation. `stopAgent()` does not

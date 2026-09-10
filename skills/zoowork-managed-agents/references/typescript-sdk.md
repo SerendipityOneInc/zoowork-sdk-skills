@@ -50,8 +50,12 @@ skill creation rejects duplicate names with 409; skill versions deduplicate cont
 listModels(): Promise<ModelInfo[]>   // no arguments, no paging
 ```
 
-Model ids are prefixed, e.g. `litellm/claude-sonnet-5`. Both wire shapes (a bare array or
-`{ models }`) are tolerated, so you always get an array.
+Model ids are prefixed, e.g. `litellm/gpt-5.6-terra`. Both wire shapes (a bare array or
+`{ models }`) are tolerated, so you always get an array. `ModelInfo.api` can be
+`anthropic-messages`, `openai-completions`, `openai-responses`, or a future string; preserve
+unknown values. Omitting `AgentResource.model` pins the server defaults current at create time.
+The current source default is Terra, but deployments can differ and the default can rotate;
+select a returned alias explicitly for repeatable provisioning.
 
 ## Agents
 
@@ -97,9 +101,14 @@ optional except `name: string`:
 | `skills` | `{ skill_id: string; version?: number \| 'latest' }[]` | declared on the type, but no recorded create exercised it - attach with `putAgentSkill` instead |
 | `labels` | `Record<string, string>` | what `listAgents({ labels })` filters on |
 | `tool_policy` | `Record<string, unknown>` | reads back as `{}` in the declared config; no key names are pinned by any recorded response, so omit it |
-| `mcp` | `McpServerDeclaration[]` | remote HTTP only; the server `name` must contain no underscore |
+| `mcp` | `McpServerDeclaration[]` | remote HTTP only; the server `name` must contain no underscore; `exposure?: 'deferred' \| 'direct'` |
 | `sandbox` | `{ scope: 'agent' \| 'session' }` | `exec` needs `agent` |
 | `environment_id`, `environment_version` | `string`, `number` | pins permanently on first sandbox creation |
+
+`McpServerDeclaration.exposure` is either `deferred` (also the omission default) or `direct`;
+there is no `auto`. Deferred tools load through `tool_search` / `tool_describe` and remain
+available on later turns in the same Session. Direct tools are declared on the first model
+request. These loading details are source-reviewed, not deployment-verified here.
 
 The onboarding interview is always skipped: the SDK sends `onboarding: false` on every create, so
 the agent answers your first message directly. Ownership is likewise handled for you - the gateway
@@ -120,8 +129,9 @@ treats server 408s specially: a spent budget throws `408` with `type: 'timeout'`
 `signal` throws `0` with `type: 'aborted'`. Both bounds cover an in-flight poll, not just the gap
 between polls, which is why this beats a hand-rolled loop - `fetch` imposes no timeout of its own in
 any runtime the SDK targets, so a stalled gateway parks such a loop forever. The other reason is
-`actual_state`: it reports chat-channel health, `running` is not one of its values, and an API-only
-agent sits at `activating` permanently.
+`actual_state`: it is a best-effort chat-channel health projection, not API readiness. Unsupported
+route-status can project `active` with zero channel counts; a transient query failure can remain
+`activating`, and list/GET may briefly differ. `running` is not one of its values.
 
 Successful start/stop responses may contain warnings, but HTTP and transport failures still throw.
 Source-reviewed stop behavior can write desired state before a later step fails: read `getAgent`
@@ -217,8 +227,9 @@ Channel constraints (recorded observations unless marked source-reviewed):
   This is context separation, not access isolation. Source-reviewed public reads use organization
   authorization; a session's channel does not hide it from an org key. Your backend must authorize
   each end user. IM sessions reject caller-supplied `actor`.
-- **`actual_state` starts moving once a channel is bound** - it reports that channel's
-  connectivity. It is STILL not an API-readiness signal; keep gating on `desired_state`.
+- **`actual_state` remains only a best-effort channel-health projection after binding** - it may
+  report that channel's connectivity, but it is still not an API-readiness signal; keep gating on
+  `desired_state`.
 
 `addChannel` is idempotent but **not** an upsert: an identical body for the same
 `platform`+`account` answers 201 again and replays the binding you already have, while the same

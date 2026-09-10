@@ -451,6 +451,45 @@
           ]
         }
       ]
+    },
+    {
+      "id": 11,
+      "name": "configure-mcp-tool-exposure",
+      "prompt": "Our public unauthenticated HTTP MCP server has hundreds of tools. Show the ZooWork TypeScript declarations for keeping its tools lazy by default and for exposing them on the first model request. Is exposure:auto supported? If a lazy tool is loaded, will it still be available on the next turn in the same session?",
+      "expected_output": "Uses McpServerDeclaration exposure deferred/direct, explains omission defaults to deferred and there is no auto value, and says a loaded deferred tool remains available on later turns in the same Session.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "shows deferred exposure",
+          "kind": "present",
+          "patterns": [
+            "exposure\\s*:\\s*['\"]deferred['\"]"
+          ]
+        },
+        {
+          "name": "shows direct exposure",
+          "kind": "present",
+          "patterns": [
+            "exposure\\s*:\\s*['\"]direct['\"]"
+          ]
+        },
+        {
+          "name": "rejects an auto mode",
+          "kind": "present",
+          "patterns": [
+            "[Nn]o.{0,20}['\"]?auto",
+            "['\"]auto['\"].{0,40}(not supported|invalid|not a valid)"
+          ]
+        },
+        {
+          "name": "preserves a loaded deferred tool across turns in one session",
+          "kind": "present",
+          "patterns": [
+            "(?:loaded|available)[\\s\\S]{0,120}(?:later|next|subsequent)[ -]turns?[\\s\\S]{0,120}(?:same|one)[ -]?[Ss]ession",
+            "(?:same|one)[ -]?[Ss]ession[\\s\\S]{0,120}(?:later|next|subsequent)[ -]turns?[\\s\\S]{0,120}(?:loaded|available)"
+          ]
+        }
+      ]
     }
   ]
 }
