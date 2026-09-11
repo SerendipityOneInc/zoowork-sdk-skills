@@ -63,7 +63,7 @@ A stored, versioned configuration. Create once, keep the `agent_id`, reference b
 
 ```ts
 createAgent(input: { resource: AgentResource; ownership?: Ownership }, idempotencyKey?: string): Promise<AgentRecord>
-listAgents(opts?: { labels?: Record<string, string>; page?: number }): Promise<AgentRecord[]>
+listAgents(opts?: AgentListParams): AgentPagePromise
 getAgent(agentId: string): Promise<AgentRecord>
 updateAgent(agentId: string, sections: Record<string, unknown>): Promise<AgentRecord>  // per-section PUT; bumps config_version on every call
 deleteAgent(agentId: string): Promise<void>                     // 204; does NOT remove the agent's schedules - delete those yourself first
@@ -120,7 +120,57 @@ colleague created in the same org is fetchable by `getAgent(id)` and never appea
 empty list is therefore not proof the agent does not exist, and a provisioning path reasoning "not
 in the list, therefore create one" mints duplicates alongside it. `labels` filters on declared
 labels, sent as `label.<key>=<value>` parameters - the way to resolve your own external id back to
-an agent. Page size is fixed at 100 by the engine.
+an agent. Page size is fixed at 100 by the API.
+
+**Agent list pagination is version-sensitive.** Check the installed SDK's declarations before
+using this shape. The implementation in [SDK PR #26](https://github.com/SerendipityOneInc/zoowork-sdk-typescript/pull/26)
+returns `AgentPagePromise`; SDK 0.5.2 returns `Promise<AgentRecord[]>` instead. Use a package
+release containing the pagination change for the following examples. Source and offline SDK
+tests verify this behavior; no live pagination verification is claimed here.
+
+```ts
+interface AgentListParams {
+  labels?: Record<string, string>
+  page?: number
+}
+interface AgentPage extends AsyncIterable<AgentRecord> {
+  readonly data: AgentRecord[]
+  readonly page: number
+  readonly page_size: number
+  readonly total: number
+  readonly next_page: number | null
+  hasNextPage(): boolean
+  getNextPage(): Promise<AgentPage>
+  iterPages(): AsyncIterableIterator<AgentPage>
+}
+interface AgentPagePromise extends Promise<AgentPage>, AsyncIterable<AgentRecord> {}
+```
+
+```ts
+// All matches: the SDK fetches each next page only when iteration reaches it.
+for await (const agent of zc.listAgents({ labels: { app: 'support' } })) {
+  console.log(agent.agent_id)
+}
+
+// One page: await, then read .data rather than treating the result as an array.
+const page = await zc.listAgents()
+console.log(page.data, page.total, page.next_page)
+if (page.hasNextPage()) {
+  const next = await page.getNextPage()
+  console.log(next.data)
+}
+```
+
+`next_page` is a numeric page starting at 1, derived from `page`, `page_size`, and `total`;
+it is `null` at the end. Do not invent `limit` or a string cursor: the API fixes page size
+at 100. `getNextPage()` preserves the original label filters, and rejects on the last page.
+Breaking async iteration stops further requests; failed later requests and invalid pagination
+metadata throw rather than silently yielding an incomplete result. `page.iterPages()` walks
+page objects. Concurrent additions/deletions can shift results; this is not snapshot pagination.
+
+When migrating an array caller, use `const { data: agents } = await zc.listAgents(opts)` for
+one page, or `for await` for all matches. Do not apply `.data` or async iteration to the
+0.5.2 array-return method.
 
 **`waitUntilRunning`** defaults to `timeoutMs = 30_000`, `intervalMs = 500`, polls `getAgent`, and
 returns that `AgentRecord` once `status.desired_state === 'running'`. Both failures are
