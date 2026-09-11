@@ -74,12 +74,15 @@ recognizable in `getAgent().declared`.
 `labels` earn their keep immediately: `listAgents({ labels })` filters on them server-side, which
 is how you find this agent again from a fresh process without a database.
 
+This example uses the paginated `listAgents()` return; check the installed SDK against
+[the pagination reference](./typescript-sdk.md#agents). SDK 0.5.2 returns an array instead.
+
 ```ts
 const LABELS = { app: 'deck-editor', env: 'prod' }
 const persona = await readFile('./AGENTS.md', 'utf8')
 
 // Converge on ONE agent instead of creating another on every deploy.
-const existing = await zc.listAgents({ labels: LABELS })
+const { data: existing } = await zc.listAgents({ labels: LABELS })
 let agentId = existing[0]?.agent_id
 
 if (!agentId) {
