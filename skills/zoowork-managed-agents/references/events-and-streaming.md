@@ -13,7 +13,7 @@ latency, not shape. Every call below needs an `agt_` id whose `status.desired_st
 The event log is per session. Every event carries a `seq` that is monotonic within that session and
 never reused (gaps are normal - the sequence is strictly increasing, not contiguous). The log is
 **bidirectional**: your own inputs echo back as `user.message`, `user.interrupt`,
-`user.tool_confirmation` and `system.message` alongside the engine's output, so the whole
+`user.tool_confirmation`, `user.custom_tool_result` and `system.message` alongside the engine's output, so the whole
 conversation reconstructs from this one surface. Pagination and stream resume run on cursors: a
 list page's `nextCursor`, or the `cursor` token on each streamed event. Persist the last cursor you
 successfully processed next to your session id. The token is opaque and is not interchangeable
@@ -53,9 +53,11 @@ Details that decide how you write the consumer:
 - `seq` is `-1` when no sequence can be read. A numeric legacy SSE ID can backfill it, but an
   opaque unified ID is a cursor, not a number: never parse it as a sequence.
 
-`normalizeEvent(raw: unknown, sseId?: string): SessionEvent` is exported, so a custom transport
+TypeScript exports `normalizeEvent(raw, sseId)` and Python exports `normalize_event(raw, sse_id)`,
+so a custom transport
 (a browser `EventSource`, a proxy in another process) can reuse it rather than re-deriving both
-mappings. Any other language has to write both mappings by hand - no Python package is published.
+mappings. In Python, normalized fields use snake_case: `event_type`, `run_id`, `created_at`, and
+`processed_at`.
 There is no top-level `type`, no `session.status_*` event, no `span.*` event, and no turn-level
 stop reason: switch on `event.eventType`, and end the turn on `run.finished`. An assistant message
 does carry the provider's `stopReason` inside its own payload (see Reading history over REST), but
@@ -65,9 +67,9 @@ that is a property of one message, not a turn signal.
 
 ## The vocabulary
 
-`SESSION_EVENT_TYPES` is exported as a runtime array of exactly these 19 entries, in this order.
-Your own inputs additionally echo back as the four `PUBLIC_INPUT_EVENT_TYPES` (`user.message`,
-`user.interrupt`, `user.tool_confirmation`, `system.message`) - see the table's last rows. The
+`SESSION_EVENT_TYPES` is exported as a runtime array of exactly these 20 entries, in this order.
+Your own inputs additionally echo back as the five `PUBLIC_INPUT_EVENT_TYPES` (`user.message`,
+`user.interrupt`, `user.tool_confirmation`, `user.custom_tool_result`, `system.message`) - see the table's last rows. The
 `types=` filter on the history read accepts both lists; anything else is `400 invalid_request`.
 
 | Type | What it means | Act on it? |
@@ -85,6 +87,7 @@ Your own inputs additionally echo back as the four `PUBLIC_INPUT_EVENT_TYPES` (`
 | `agent.item` | Internal loop markers (`kind`: `assistant_segment`, `llm_request`), not conversation. | No - skip when rendering a chat |
 | `agent.plan` | Reserved in the vocabulary. The core loop does not emit it. | No |
 | `agent.approval` | A tool call needs an approval, or one resolved. `phase`: `requested` / `resolved`. | Only for human-in-the-loop |
+| `agent.custom_tool_use` | An application-executed tool was requested or resolved. Use `customToolUse()` / `custom_tool_use()`. | Yes, when the application owns execution |
 | `agent.command_output` | A command-running tool produced stdout/stderr, at result granularity. | Optional |
 | `agent.patch` | An `apply_patch` tool call succeeded. | Optional |
 | `agent.compaction` | History was compacted to fit the context window. `tokensBefore`, `reason`. | Telemetry only |
@@ -92,7 +95,7 @@ Your own inputs additionally echo back as the four `PUBLIC_INPUT_EVENT_TYPES` (`
 | `attachment.created` | A tool produced a file. `source`, `toolName`, `toolCallId`, storage refs. | Yes, if you surface files |
 | `message.outbound` | The agent sent a proactive message (message tool, schedule announce, heartbeat) instead of replying in-session. | Only for proactive agents |
 | `user.message` (echo) | Your own message, echoed into the log. `payload.content` is a block array (`messageText` reads it); `processedAt` is `null` until the agent consumes it. | Yes - the user side of the chat |
-| `user.interrupt` / `user.tool_confirmation` / `system.message` (echo) | Your other inputs, echoed with their payloads. | Optional - render if you show them |
+| `user.interrupt` / `user.tool_confirmation` / `user.custom_tool_result` / `system.message` (echo) | Your other inputs, echoed with their payloads. | Optional - render if you show them |
 
 Source-reviewed MCP errors may use `mcp_connection_failed` or `mcp_authentication_failed`.
 Preserve unknown `reason` values. Transient failed catalogs can expire so a later resolution
@@ -395,7 +398,7 @@ read `ev.payload.phase`.
 
 ## Writing into a session
 
-Exactly four event types can be posted. An invalid type or malformed body rejects with HTTP 400,
+Exactly five event types can be posted. An invalid type or malformed body rejects with HTTP 400,
 so handle a thrown error and use status when the exact code is unknown. A valid 202 response with
 an `accepted: false` receipt is a different outcome. Source review shows input validation before
 effects, but this is not a guarantee of transactional rollback for runtime batch failures.
@@ -407,6 +410,7 @@ every session method, because the route is `/agents/{id}/sessions/{sid}/events`.
 | `user.message` | `content` (non-empty **string**), optional `idempotency_key` (exercised - a same-key retry converges on the same event instead of double-delivering), optional `actor: { ref }` (source-reviewed) and `attachments[]` (not exercised) | Appends a user turn and starts a run |
 | `user.interrupt` | no other fields | Aborts the in-flight run; that run ends `run.finished` with `status: 'aborted'` |
 | `user.tool_confirmation` | `approval_id`, `decision`: `allow-once` / `allow-always` / `deny` | Resolves a pending approval |
+| `user.custom_tool_result` | `custom_tool_use_id` or `call_id`, 1–16 result `content` blocks, optional `is_error`, stable `idempotency_key` | Resolves an application-executed custom call in the same run |
 | `system.message` | `text` (non-empty string) | Injects a note the model reads on the **next** turn |
 
 Source-reviewed actor rules: only `ref` is accepted inside `actor`, with 1–200 ASCII characters

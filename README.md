@@ -37,8 +37,9 @@ platform, so it earns its keep in *your* project.
 |---|---|
 | [`zoowork-managed-agents`](skills/zoowork-managed-agents/SKILL.md) | How to create and configure agents, run sessions, consume the event stream, upload and attach skills, schedule autonomous runs - and which capabilities are absent, with the real alternative for each |
 
-`zoowork-managed-agents` covers the TypeScript SDK, `@zoowork-ai/sdk`. There is no Python SDK;
-the skill says so rather than letting an assistant invent an import.
+`zoowork-managed-agents` covers both official SDKs: TypeScript package `@zoowork-ai/sdk` and
+Python package `zoowork`. It keeps their camelCase and snake_case method names separate while
+teaching the same public API contract.
 
 ## Two things called "skill"
 

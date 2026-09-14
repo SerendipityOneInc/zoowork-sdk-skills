@@ -43,3 +43,38 @@ test('contract tripwire rejects old interval/version shapes', () => {
   assert.equal(check(8, 'createSchedule(a, { schedule: { kind: "every", every: 60 } }); const v = await zc.uploadSkillVersion(id, zip); console.log(v.latest_version, v.status)').status, 1)
   assert.equal(check(8, 'createSchedule(a, { schedule: { kind: "every", everyMs: 60_000 } }); const v = await zc.uploadSkillVersion(id, zip); console.log(v.version, v.state); if (run.session_id) use(run.session_id)').status, 0)
 })
+
+test('custom-tool tripwire requires declaration, handling, recovery and evidence boundary', () => {
+  assert.equal(check(4, 'Use an MCP server because custom tools are not supported.').status, 1)
+  assert.equal(check(4, `
+    custom_tools: [{ name: 'lookup_price', input_schema: { type: 'object' } }]
+    const call = customToolUse(ev)
+    await zc.resolveCustomToolCall(agentId, call.callId, { content: [{ type: 'json', value }] })
+    await zc.listCustomToolCalls(agentId, { status: 'pending' })
+    // source-reviewed, not live-verified
+  `).status, 0)
+})
+
+test('Python SDK tripwires keep snake_case custom-tool and cursor methods', () => {
+  assert.equal(check(15, 'const zc = createZooworkClient(); await zc.waitUntilRunning(id)').status, 1)
+  assert.equal(check(15, `
+    from zoowork import create_zoowork_client, assistant_text, is_run_finished
+    agent = await client.create_agent({})
+    await client.start_agent(agent_id)
+    await client.wait_until_running(agent_id)
+    session = await client.create_session(agent_id, {})
+    async for event in client.stream_events(agent_id, session_id):
+        print(assistant_text(event))
+        if is_run_finished(event): break
+  `).status, 0)
+
+  assert.equal(check(16, `
+    custom_tools = [{"name": "lookup_price", "input_schema": {"type": "object"}}]
+    call = custom_tool_use(event)
+    pending = await client.list_custom_tool_calls(agent_id, status="pending")
+    await client.resolve_custom_tool_call(agent_id, call.call_id, content=[{"type": "json", "value": 1}])
+    cursor = "sls1:0"
+    page = await client.list_session_page(agent_id, cursor=cursor, exclude_channels=["api"], runtime_modes=["active"])
+    # source-reviewed, not deployment-verified
+  `).status, 0)
+})

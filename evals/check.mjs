@@ -7,8 +7,8 @@
 // optionally transcript.md / answer.md for prompts whose answer is prose rather than code.
 // Every readable file under it is concatenated and matched as one document, so an assertion
 // satisfied in a comment or in prose counts - that is deliberate. An assistant that says
-// "client-executed custom tools are not supported" has passed eval 4 whether it said so in a
-// code comment or in its reply.
+// A custom-tool declaration or a source-review caveat can satisfy eval 4 whether it appears in a
+// code comment or in the prose reply.
 //
 // These checks are a regression tripwire, not a grader. They catch the specific mistakes an
 // unaided assistant makes on this API. Read the output yourself before drawing a conclusion.
