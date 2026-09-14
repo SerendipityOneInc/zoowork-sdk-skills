@@ -1,6 +1,6 @@
 ---
 name: zoowork-managed-agents
-description: Build on ZooWork Managed Agents - hosted AI agents that run in a managed sandbox, driven from your own code through the `@zoowork-ai/sdk` TypeScript SDK. Use this skill whenever ZooWork is mentioned; on any `zct_` key, `agt_` or `skl_` id, `ZOOWORK_API_KEY`, `ZOOWORK_BASE_URL`, `@zoowork-ai/sdk`, `createZooworkClient`, `waitUntilRunning`, `putAgentSkill`, `startFeishuSetup`, binding a Feishu/Lark channel to an agent, or the ZooWork App Kit; on the errors `agent_not_running`, `environment_locked`, `session_archived`, `exec_requires_agent_scope`, or `environment_not_ready`; and when someone wants a ZooWork agent they built locally, with its skills, hosted somewhere it can serve real users. Read it before writing any ZooWork call - code that merely looks right here compiles and then fails at runtime.
+description: Build on ZooWork Managed Agents - hosted AI agents driven through the `@zoowork-ai/sdk` TypeScript SDK or `zoowork` Python SDK. Use this skill whenever ZooWork is mentioned; on any `zct_` key, `agt_` or `skl_` id, `ZOOWORK_API_KEY`, `ZOOWORK_BASE_URL`, `@zoowork-ai/sdk`, `createZooworkClient`, `create_zoowork_client`, `waitUntilRunning`, `wait_until_running`, `putAgentSkill`, custom tools, filtered Session cursors, MCP context or permissions, channel binding for Feishu/Lark or DingTalk, or the ZooWork App Kit; on the errors `agent_not_running`, `environment_locked`, `session_archived`, `exec_requires_agent_scope`, or `environment_not_ready`; and when someone wants a ZooWork agent they built locally, with its skills, hosted somewhere it can serve real users. Read it before writing any ZooWork call - code that merely looks right here can pass local checks and fail at runtime.
 license: MIT
 ---
 
@@ -29,8 +29,10 @@ after the first integration test).
 
 ## Before you start
 
-**The package is `@zoowork-ai/sdk`.** Not `@zoowork/sdk`, not `@zoowork-agents/sdk`. Those names
-have never existed on npm, and guessing one sends the user to a 404.
+**Choose the official package for the user's language.** TypeScript is `@zoowork-ai/sdk`, not
+`@zoowork/sdk` or `@zoowork-agents/sdk`. Python is `zoowork`, imported with
+`from zoowork import create_zoowork_client`. Both clients are asynchronous; the Python client is
+built on `httpx` and keeps API payload fields in their wire spelling.
 
 **The key.** One credential authenticates everything: an organization service token that starts with
 `zct_`, passed as `apiKey`. It authenticates the whole organization with full read and write over
@@ -174,6 +176,30 @@ for await (const ev of zc.streamEvents(agentId, session.session_id, cursor ? { c
 }
 ```
 
+The Python flow is the same, with snake_case method and helper names:
+
+```python
+from zoowork import assistant_text, create_zoowork_client, is_run_finished
+
+async with create_zoowork_client() as client:
+    models = await client.list_models()
+    created = await client.create_agent(
+        {"name": "support-agent", "model": {"primary": models[0]["model"]}},
+        idempotency_key="support-agent-v1",
+    )
+    agent_id = created["agent_id"]
+    await client.start_agent(agent_id)
+    await client.wait_until_running(agent_id)
+    session = await client.create_session(
+        agent_id,
+        {"initial_events": [{"type": "user.message", "content": "Hello"}]},
+    )
+    async for event in client.stream_events(agent_id, session["session_id"]):
+        print(assistant_text(event), end="")
+        if is_run_finished(event):
+            break
+```
+
 ---
 
 ## Events (quick reference)
@@ -208,8 +234,8 @@ history-reading path, and the reconnect pattern.
 
 ## Writing into a session
 
-Only four event types can be written: `user.message`, `user.interrupt`, `user.tool_confirmation`,
-and `system.message`.
+Only five event types can be written: `user.message`, `user.interrupt`, `user.tool_confirmation`,
+`user.custom_tool_result`, and `system.message`.
 
 `system.message` is worth knowing about - it injects context the model reads on its next turn
 without appearing as a user turn. It is the supported way to hand an agent state your own
@@ -230,6 +256,31 @@ is a normal reply and not an error.
 Give each event an `idempotency_key` (any stable string): a `postEvents` retried after a timeout
 then converges instead of delivering the message twice. Accepted events come back as the full event
 object the history will show (with its `seq`); an unaccepted interrupt stays a plain receipt.
+
+## Application-executed custom tools
+
+Declare up to 32 tools under `resource.custom_tools` when your application should execute a call
+while the current run waits. Each declaration has `name`, `description`, an object
+`input_schema`, and optional `timeoutMs`. Read `agent.custom_tool_use` with `customToolUse()` or
+`custom_tool_use()`, then return 1–16 text, JSON, or base64 image blocks with
+`resolveCustomToolCall()` / `resolve_custom_tool_call()`. Recover pending work after a process
+restart with `listCustomToolCalls({ status: 'pending' })` or
+`list_custom_tool_calls(status="pending")`.
+
+The Session-event alternative is `user.custom_tool_result`, identified by
+`custom_tool_use_id` or `call_id`; give it a stable `idempotency_key` when retrying. While a run
+waits, `run_status` is `awaiting_approval`, so inspect `pending_custom_tool_calls` instead of
+assuming every wait is a human approval. A REST result receipt with `signaled: true` can remain
+pending until the run consumes it. This contract is source-reviewed and offline-tested, not live
+deployment-verified. Read the language-specific SDK reference before implementing it.
+
+## Listing Sessions
+
+Keep the legacy methods for numeric paging: `listSessions(agentId, { page })` and
+`list_sessions(agent_id, page=...)`. For filters and resumable scans, use `listSessionPage()` or
+`list_session_page()`. The SDK selects the cursor lane with initial cursor `sls1:0`; preserve the
+same channel, surface, runtime-mode, and archive filters for every continuation. Cursors are opaque
+and bound to the Agent and filter scope. Each row has `list_cursor`; the page has `next_cursor`.
 
 ## Skills (quick reference)
 
@@ -275,15 +326,16 @@ Uploading a local skill directory and attaching it is the core of
 
 | The user wants to | Read |
 |---|---|
-| A signature, a return shape, or a method you are not certain exists | `references/typescript-sdk.md` - all 62 client methods by area |
-| Cron schedules (including the `payload.outcome` gate), running a command in the sandbox (`exec`), `wake`, environments, approvals, artifacts, the system prompt, or channels (binding Feishu/Lark) | `references/typescript-sdk.md` - these surfaces appear **nowhere else in this skill**, and each has a trap worth a debugging session (schedule reads and writes speak different vocabularies; `exec` needs an agent-scope sandbox; artifact routes need selectors the SDK derives for you) |
+| A TypeScript signature, return shape, or method you are not certain exists | `references/typescript-sdk.md` |
+| A Python import, snake_case signature, return shape, event helper, or method | `references/python-sdk.md` |
+| Cron schedules (including the `payload.outcome` gate), running a command in the sandbox (`exec`), `wake`, environments, approvals, artifacts, the system prompt, MCP policy/context, or channels (including Feishu and DingTalk) | `references/typescript-sdk.md` - these surfaces appear **nowhere else in this skill**, and each has a trap worth a debugging session (schedule reads and writes speak different vocabularies; `exec` needs an agent-scope sandbox; artifact routes need selectors the SDK derives for you) |
 | To consume the stream, read history, reconnect, or render tool calls | `references/events-and-streaming.md` |
 | To host an agent they built locally, with its skills - or to run an agent per end user and keep one skill updating the whole fleet | `references/deploy-your-agent.md` - **follow it in order, do not summarize it** |
-| Something you suspect is not supported (custom tools, vaults, webhooks, file uploads, approvals, memory) | `references/not-supported.md` - **read before designing**, each entry names the real alternative |
+| Something you suspect is not supported (worker queues, vaults, webhooks, file uploads, approvals, memory) | `references/not-supported.md` - **read before designing**, each entry names the real alternative |
 
-For anything none of those cover, the SDK's shipped `dist/index.d.ts` is the authority, and the
-developer documentation is at `https://github.com/SerendipityOneInc/zoowork-agents-docs`. Prefer
-either over recalling a shape.
+For anything none of those cover, use the shipped TypeScript `dist/index.d.ts` or Python source
+and type annotations as the authority. Developer documentation is at
+`https://github.com/SerendipityOneInc/zoowork-agents-docs`. Prefer those over recalling a shape.
 
 ## Common pitfalls
 
@@ -292,12 +344,17 @@ either over recalling a shape.
   query failure can remain `activating`, and list/GET may briefly differ. `running` is not one of
   its values. `waitUntilRunning()` polls `desired_state` and throws `408`/`'timeout'` on a spent
   budget.
-- **There is no custom tool type and no tool-result event.** The agent cannot call back into your
-  process mid-turn. `references/not-supported.md` - Client-executed custom tools has the two real
-  alternatives (a remote MCP server, or doing the work between turns).
-- **MCP exposure is explicit.** Omit `exposure` or use `'deferred'` to load tools through
-  `tool_search` / `tool_describe`; use `'direct'` to declare them on the first model request.
-  There is no `'auto'`. This does not change the current public-server-only credential boundary.
+- **Custom tools and MCP tools have different execution owners.** A custom tool parks the run while
+  your application executes and resolves it. MCP runs on a remote server called by the platform.
+  Neither is a general worker-registration or background-queue API.
+- **MCP exposure, context, and permission are separate.** `exposure` controls when tools enter the
+  model context. `context.meta` / `context.headers` opt runtime identifiers into tool calls; those
+  identifiers are not authentication. `permission` is the server default and `tools` overrides
+  exact native tool names (no wildcards, 64 maximum). Omission keeps default-allow behavior, and
+  an allow-always decision on the server wildcard covers all of that server's tools for the
+  Session. The end-to-end approval loop remains unverified.
+- **Tool-policy wildcard syntax is narrow.** Use an exact name, global `*`, or one trailing
+  `prefix*`. Other `*` placements match nothing. `alsoAllow` stays exact-only.
 - **There is no credential API.** The platform seeds model credentials itself at create, and there
   is no store for your end users' secrets — those belong on your own service.
 - **An Environment choice locks permanently** on first sandbox creation. `stopAgent()` does not
@@ -324,6 +381,7 @@ either over recalling a shape.
 - **`exec(agentId, args)` takes argv, not a shell string.** Use `['bash', '-lc', 'ls /workspace']`
   for shell semantics. A non-zero exit is still HTTP 200 - the promise resolves, so check
   `exit_code` yourself.
-- **`@zoowork-ai/sdk` is TypeScript only.** No Python package is published. For another
-  language, call the REST API directly and normalize the two event spellings yourself - say that
-  rather than inventing an import.
+- **Do not mix SDK naming conventions.** TypeScript uses `createZooworkClient`, `listSessionPage`,
+  and `event.eventType`; Python uses `create_zoowork_client`, `list_session_page`, and
+  `event.event_type`. Python payload dictionaries still preserve wire keys such as `custom_tools`
+  and `timeoutMs`.

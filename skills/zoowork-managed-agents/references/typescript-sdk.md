@@ -1,14 +1,14 @@
 # TypeScript SDK surface
 
-All 62 methods on `ZooworkClient`, grouped by area, signatures exactly as `src/client.ts` declares
+All 65 methods on `ZooworkClient`, grouped by area, signatures exactly as `src/client.ts` declares
 them. The package is `@zoowork-ai/sdk` - ESM only (no CJS `require` condition, no subpath
 exports), zero runtime dependencies, `engines.node >= 20`, shipping `dist/index.d.ts`, which is the
 authority over anything here. `SKILL.md` has the mandatory flow; this file is for looking up a
 signature, a return shape, or whether a method exists.
 
-Thirteen runtime values are exported and a test pins the list, so an import outside it fails:
+Fourteen runtime values are exported and a test pins the list, so an import outside it fails:
 `createZooworkClient`, `DEFAULT_BASE_URL`, `ZooworkError`, `SESSION_EVENT_TYPES`, `normalizeEvent`,
-`isRunFinished`, `runOutcome`, `messageText`, `assistantText`, `thinkingText`, `toolCall`,
+`isRunFinished`, `runOutcome`, `messageText`, `assistantText`, `thinkingText`, `customToolUse`, `toolCall`,
 `parseSSE`, `PUBLIC_INPUT_EVENT_TYPES`. Everything else is a `type`, and there are no error-code constants - see Errors.
 
 ## Client construction
@@ -100,8 +100,9 @@ optional except `name: string`:
 | `persona` | `{ docs: { name: string; content: string; seed_policy?: string }[] }` | `docs` is an **array of documents**, not a filename-keyed object |
 | `skills` | `{ skill_id: string; version?: number \| 'latest' }[]` | declared on the type, but no recorded create exercised it - attach with `putAgentSkill` instead |
 | `labels` | `Record<string, string>` | what `listAgents({ labels })` filters on |
-| `tool_policy` | `Record<string, unknown>` | reads back as `{}` in the declared config; no key names are pinned by any recorded response, so omit it |
-| `mcp` | `McpServerDeclaration[]` | remote HTTP only; the server `name` must contain no underscore; `exposure?: 'deferred' \| 'direct'` |
+| `tool_policy` | `Record<string, unknown>` | source-reviewed matching accepts exact names, global `*`, or one trailing `prefix*`; `alsoAllow` remains exact-only |
+| `mcp` | `McpServerDeclaration[]` | remote HTTP only; supports exposure, opt-in runtime context, server permission defaults, and exact per-tool overrides |
+| `custom_tools` | `CustomToolDeclaration[]` | up to 32 application-executed tools: `name`, `description`, object `input_schema`, optional `timeoutMs` |
 | `sandbox` | `{ scope: 'agent' \| 'session' }` | `exec` needs `agent` |
 | `environment_id`, `environment_version` | `string`, `number` | pins permanently on first sandbox creation |
 
@@ -109,6 +110,38 @@ optional except `name: string`:
 there is no `auto`. Deferred tools load through `tool_search` / `tool_describe` and remain
 available on later turns in the same Session. Direct tools are declared on the first model
 request. These loading details are source-reviewed, not deployment-verified here.
+
+Source-reviewed MCP additions:
+
+```ts
+interface McpServerDeclaration {
+  name: string
+  url: string
+  transport?: 'streamable-http' | 'sse'
+  credential?: string
+  toolFilter?: string[]
+  exposure?: 'deferred' | 'direct'
+  context?: { meta?: boolean; headers?: boolean }
+  permission?: 'always_ask' | 'always_allow'
+  tools?: Record<string, { permission: 'always_ask' | 'always_allow' }>
+  [k: string]: unknown
+}
+```
+
+Both context switches default to false. `meta` adds `_meta["ai.zooclaw/context"]`; `headers`
+adds `x-zooclaw-*` headers during tool execution. The payload contains agent/session/computer ids
+and optional run/turn/config/actor fields. Catalog discovery carries no runtime context, and HTTP
+intermediaries may strip custom headers. These identifiers are context, not authentication.
+
+`permission` is the server default. `tools` overrides exact native MCP tool names before the
+`mcp__<server>__<tool>` prefix is added, accepts no wildcard keys, and is capped at 64 entries.
+Omission preserves the default-allow behavior. An allow-always decision on a server wildcard
+covers every tool from that server for the Session; use exact overrides when that scope is too
+broad. The approval round trip remains unverified.
+
+Tool-policy matching uses exact names, global `*`, or one trailing `prefix*` in allow, deny, rule
+match/afterRules and deferred MCP pinned entries. Other star placements match nothing.
+`alsoAllow` is exact-only, and the first matching rule wins.
 
 The onboarding interview is always skipped: the SDK sends `onboarding: false` on every create, so
 the agent answers your first message directly. Ownership is likewise handled for you - the gateway
@@ -189,8 +222,9 @@ after an uncertain failure and reconcile. Soft deletion is not resource cleanup.
 
 ## Channels
 
-Bind Feishu/Lark, Slack, WeCom and WeChat to an agent. Existing SDK evidence covers generic QR
-methods on 2026-08-28; verify availability on your deployment, since older deployments can return 404.
+Bind Feishu/Lark, Slack, WeCom, WeChat and DingTalk to an agent. Existing SDK evidence covers the
+first four and generic QR methods on 2026-08-28. DingTalk direct binding is source-reviewed, not
+deployment-verified; older deployments can return 404 for this family.
 
 | Platform | Explicit `addChannel` config | Guided QR setup |
 |---|---|---|
@@ -198,11 +232,12 @@ methods on 2026-08-28; verify availability on your deployment, since older deplo
 | `slack` | `{ botToken, appToken }` | No guided SDK flow; obtain app tokens separately |
 | `wecom` | `{ botId, secret }` | `startChannelSetup(id, 'wecom', opts)` |
 | `weixin` / `wechat` | Refused with `400 channel.weixin_setup_required` | Use `'weixin'` for setup |
+| `dingtalk-connector` | `{ clientId, clientSecret }`, with `dm_policy: 'open'` | No public guided setup route |
 
 ```ts
 listChannels(agentId): Promise<AgentChannel[]>                       // [] for a pure API agent
-addChannel(agentId, { platform, account?, display_name?, dm_policy?, group_policy?, allow_from?, config? }): Promise<AgentChannel>
-updateChannel(agentId, platform, { account?, dm_policy?, group_policy?, enabled? }?): Promise<AgentChannel>
+addChannel(agentId, { platform, account?, display_name?, dm_policy?, group_policy?, allow_from?, config?, permission_admin_enabled? }): Promise<AgentChannel>
+updateChannel(agentId, platform, { account?, dm_policy?, group_policy?, enabled?, permission_admin_enabled? }?): Promise<AgentChannel>
 removeChannel(agentId, platform, { account? }?): Promise<void>       // account defaults to 'default'
 
 startChannelSetup(agentId, platform: GuidedSetupPlatform, input?: ChannelSetupInput): Promise<ChannelSetupSession>
@@ -210,7 +245,7 @@ pollChannelSetup(agentId, platform: GuidedSetupPlatform, sessionId): Promise<Cha
 cancelChannelSetup(agentId, platform: GuidedSetupPlatform, sessionId): Promise<void>
 waitForChannelSetup(agentId, platform: GuidedSetupPlatform, sessionId, { timeoutMs?, signal?, onPoll? }?): Promise<ChannelPollResult>
 
-startFeishuSetup(agentId, { brand?, account?, dm_policy?, group_policy? }?): Promise<FeishuSetupSession>
+startFeishuSetup(agentId, { brand?, account?, dm_policy?, group_policy?, permission_admin_enabled? }?): Promise<FeishuSetupSession>
 pollFeishuSetup(agentId, sessionId): Promise<ChannelPollResult>
 cancelFeishuSetup(agentId, sessionId): Promise<void>
 waitForFeishuSetup(agentId, sessionId, { timeoutMs?, signal?, onPoll? }?): Promise<ChannelPollResult>
@@ -246,6 +281,12 @@ own credentials in `config` (platform-specific keys, passed through). `allow_fro
 Source-reviewed: effective policy comes from `dm_policy`; this is not an enforced sender
 allowlist. Do not use it as an authorization boundary.
 
+Feishu add, update and guided setup accept `permission_admin_enabled`. Channel responses may carry
+`capabilities.feishu_documents`: `permission_admin_enabled`, sync state (`pending`, `applied`,
+`retry`, `error`), provider state (`ready`, `degraded`), `missing_scopes`, and optional
+`approval_state: 'pending_admin'`. These fields are source-reviewed, not deployment-verified.
+Enabling the request field is not proof that document operations are ready; read the projection.
+
 Channel constraints (recorded observations unless marked source-reviewed):
 
 - **`account` names the binding, and the name is unique per USER across every agent.** One
@@ -260,6 +301,9 @@ Channel constraints (recorded observations unless marked source-reviewed):
 
 - **WeChat is QR-only.** Use `startChannelSetup(agentId, 'weixin')`, then the generic poll/wait
   methods. Passing `weixin` or `wechat` to `addChannel` still fails.
+
+- **DingTalk is direct-config only in the public API.** Use `platform: 'dingtalk-connector'`,
+  `{ clientId, clientSecret }`, and `dm_policy: 'open'`. Do not send it to guided setup.
 
 - **`addChannel`'s `201` means STORED, not WORKING.** Credentials are NOT validated at bind
   time: deliberately bogus ones returned `201` with `health:'unknown'`/`status:'configured'`,
@@ -308,6 +352,7 @@ createSession(
 ): Promise<SessionRecord>                                                          // 409 agent_not_running unless desired_state is running
 getSession(agentId: string, sessionId: string, opts?: { history?: boolean; limit?: number }): Promise<SessionRecord>
 listSessions(agentId: string, opts?: { page?: number }): Promise<SessionRecord[]>  // newest first, 50 per page, 1-based, no cursor
+listSessionPage(agentId: string, opts?: SessionListPageOptions): Promise<SessionListPage> // filtered cursor lane; initial sls1:0
 archiveSession(agentId: string, sessionId: string): Promise<{ session_id?: string; archived: boolean }>
 deleteSession(agentId: string, sessionId: string): Promise<void>   // soft delete; cancels an in-flight run, keeps the transcript
 ```
@@ -325,8 +370,14 @@ whose `entry_type` is
 and a later read still answers `archived: true`); afterwards writes answer `409 session_archived`
 while reads keep working, so interrupt an in-flight run first or the archive races it.
 
-Source-reviewed: `pending_approvals?: number` is a count, not an approval array. Use
-`listApprovals` for records. This is typed source evidence, not a recorded pending approval.
+Source-reviewed: `pending_approvals?: number` and `pending_custom_tool_calls?: number` are counts,
+not record arrays. Use `listApprovals` or `listCustomToolCalls` for records. Filtered cursor rows can
+also carry `runtime_mode`, `config_version`, `last_activity_at`, and opaque `list_cursor`.
+
+`listSessionPage` supports `limit` 1–100, `excludeChannels`, `includeSurfaces`, `runtimeModes`, and
+`includeArchived`. Omit `cursor` to start; the SDK sends `sls1:0`. Continue with `next_cursor`, keep
+filters identical, and never parse a cursor: it is bound to the Agent and filter scope. Invalid
+reuse returns `400 invalid_cursor`. This is source-reviewed and offline-tested, not live-verified.
 
 ## Events
 
@@ -344,8 +395,8 @@ listAllEvents(
 streamEvents(agentId: string, sessionId: string, opts?: { after?: number; cursor?: string; signal?: AbortSignal }): AsyncGenerator<SessionEvent>  // a generator, not a promise
 ```
 
-Only four `OutboundEvent` types can be written: `user.message`, `user.interrupt`,
-`user.tool_confirmation`, `system.message` - and all four echo back into the event log, so the log
+Only five `OutboundEvent` types can be written: `user.message`, `user.interrupt`,
+`user.tool_confirmation`, `user.custom_tool_result`, `system.message` - and all five echo back into the event log, so the log
 alone renders the whole conversation. `postEvents` answers 202; an accepted event comes back as the
 full event object (with its `seq`), and a `user.interrupt` with no run in flight comes back
 `accepted: false`, a normal reply rather than an error. Give each event an `idempotency_key` so a
@@ -363,6 +414,33 @@ retry or back off; when the server closes on idle the generator returns, and res
 calling it again with `{ cursor }` from the last event's `cursor` token. A non-2xx response throws
 a `ZooworkError` parsed by the shared HTTP parser, with optional `type` and diagnostics; an abort via `opts.signal` ends the generator cleanly rather than
 throwing.
+
+## Application-executed custom tools
+
+```ts
+listCustomToolCalls(agentId: string, opts?: { status?: 'pending' }): Promise<CustomToolCallRecord[]>
+resolveCustomToolCall(
+  agentId: string,
+  callId: string,
+  input: { content: CustomToolResultContent[]; isError?: boolean; resolvedBy?: string },
+): Promise<CustomToolCallRecord>
+```
+
+`CustomToolDeclaration` has required `name`, `description`, and object `input_schema`, plus optional
+`timeoutMs`. The declaration name is 1–64 ASCII letters, numbers, `_` or `-`; descriptions cap at
+4 KiB, schemas at 16 KiB, declarations at 32, and timeout at 86,400,000 ms (default 600,000).
+
+`agent.custom_tool_use` has `requested` and `resolved` phases. Use `customToolUse(event)` for the
+normalized `callId`, `toolCallId`, name, input, timeout, outcome, and resolution fields. Resolve
+with 1–16 text, JSON, or base64 image content blocks. The equivalent write event is
+`user.custom_tool_result`, using `custom_tool_use_id` or the accepted `call_id` alias, optional
+`is_error`, and a stable `idempotency_key`.
+
+`listCustomToolCalls` only accepts a missing status or `pending`. A pending resolution returns 202
+and may carry `signaled: true` while remaining pending until the run consumes it; already terminal
+calls return 200 and `signaled: false`. Source-reviewed errors include 400 invalid input, 403 wrong
+Agent, 404 unknown call, 409 stopped workflow, and 501 unavailable result signaling. The lifecycle
+is source-reviewed and offline-tested, not live deployment-verified.
 
 ## Skills
 

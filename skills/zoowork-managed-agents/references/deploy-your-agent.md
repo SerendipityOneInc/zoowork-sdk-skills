@@ -10,7 +10,8 @@ ways that do not prove the effect landed. `putAgentSkill` returns a bumped `conf
 or not the skill resolved, `triggerSchedule` returns `triggered: true` for a schedule that was
 skipped, and `exec` returns HTTP 200 for a command that failed. Code is TypeScript against
 `@zoowork-ai/sdk`, ESM, Node 20 or later, top-level await, and every snippet assumes this
-preamble:
+preamble. Python users should keep the same sequence with snake_case calls from
+`references/python-sdk.md`.
 
 ```ts
 import { readFile } from 'node:fs/promises'
@@ -30,7 +31,7 @@ one-way doors.
 |---|---|---|
 | System prompt, persona file, `CLAUDE.md` / `AGENTS.md` | `resource.persona.docs[]` on `createAgent` | An array of `{ name, content }`, not a map. Editable later with `updateAgent` |
 | A skill directory containing `SKILL.md` | A zip, uploaded with `uploadSkill`, attached with `putAgentSkill` | Two calls, and the upload alone attaches nothing. Steps 4 and 5 |
-| Custom tool / function definitions | **Nowhere.** There is no custom tool type and no tool-result event | Redesign this now, not after the first integration test - `references/not-supported.md` - Custom tools names the two real alternatives |
+| Custom tool / function definitions | `resource.custom_tools`; your application handles `agent.custom_tool_use` and resolves the call | Source-reviewed and offline-tested, not deployment-verified. Keep a pending-call recovery loop |
 | A local working directory of files | `/workspace` inside the agent's sandbox | With `sandbox.scope: 'agent'` there is one `/workspace` shared by every session, so it is agent state, not conversation state |
 | Your chat UI | Stays yours | It talks to your backend, never to ZooWork. Step 9 |
 | Per-end-user secrets or accounts | **Nowhere.** Vaults and credential APIs do not exist | `references/not-supported.md` - Credentials |
@@ -126,10 +127,12 @@ returned a flat receipt with a top-level `config_version` and no `declared` at a
 `agent.status?.config_version ?? agent.config_version` if you need one expression for both. Confirm
 `declared.persona` holds the text you sent; that is the proof the persona landed, not the 201.
 
-**On `tool_policy`.** The SDK types it `Record<string, unknown>` and pins no key names, and the only
-value ever observed on a real agent is the empty object `{}`. Omit it unless your deployment handed
-you a concrete policy vocabulary - anything you invent is unverified, and the create will not tell
-you which of your keys it ignored.
+**On `tool_policy`.** The SDK keeps the object open, but source review now fixes the matching
+syntax: exact names, global `*`, or one trailing `prefix*` work in allow/deny/rule match/afterRules
+and deferred MCP pinned entries. Other `*` placements match nothing, and `alsoAllow` remains
+exact-only. The only value observed on a real agent is still `{}`; a narrowed policy has not been
+deployment-verified. After provisioning, run a turn that should be blocked and inspect
+`agent.tool` instead of treating a successful create as proof the policy took effect.
 
 ---
 
@@ -417,8 +420,9 @@ await zc.postEvents(AGENT_ID, row.session_id, [{
 }])
 ```
 
-**You must store the session ids yourself.** `listSessions` is per-agent
-(`listSessions(agentId, { page })`, newest first, 50 per page, no cursor); there is no cross-agent
+**You must store the session ids yourself.** Session listing is per-agent. The legacy
+`listSessions(agentId, { page })` path is newest first and fixed at 50 rows; `listSessionPage()`
+adds a filtered cursor lane, but there is still no cross-agent
 session listing and no way to query sessions by end user. The `metadata` you set at create is
 readable but not searchable, and write-once besides - there is no `patchSession`. Your database is
 the index, and it is also your authorization boundary: the SDK will read any session in the org if

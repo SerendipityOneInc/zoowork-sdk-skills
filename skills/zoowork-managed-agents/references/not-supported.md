@@ -7,35 +7,36 @@ nearest thing that works.
 
 **"The SDK has no method for it" and "it does not exist" are different claims, and mixing them up
 misleads in both directions.** Before you tell a user something is missing, check
-`references/typescript-sdk.md` for the method list, or the shipped `dist/index.d.ts`. The
+`references/typescript-sdk.md`, `references/python-sdk.md`, or the shipped SDK declarations. The
 client already exposes approvals (`listApprovals`, `resolveApproval`), all seven schedule
 methods, six environment methods, `archiveSession` and `deleteSession`, `uploadSkill` /
-`uploadSkillVersion` / `listSkills` / `deleteSkill`, `listAgents`, `listSessions`, `exec` and
-`wake`. Those are on the client. Whether each one is safe to build on is a separate question, and
+`uploadSkillVersion` / `listSkills` / `deleteSkill`, filtered Session listing, application-executed
+custom tools, `exec` and `wake`. Python exposes the same capability groups with snake_case method
+names. Whether each one is safe to build on is a separate question, and
 this file answers it wherever the recorded evidence says do not build on it.
 
 ---
 
-## Client-executed custom tools
+## Application-executed custom tools
 
 **What you would build.** Declare a tool with a JSON schema, let the model decide to call it, run
 the function in your own process against your own database, and hand the result back so the same
 turn continues with it.
 
-**What actually happens.** There is no custom tool type on `AgentResource`, and there is no
-write-side event that carries a tool result. The write side takes exactly four event types:
-`user.message`, `user.interrupt`, `user.tool_confirmation`, `system.message`. `OutboundEvent.type`
-is typed `string`, so an invented type such as `user.custom_tool_result` compiles cleanly - it just
-is rejected with HTTP 400, even though the loose type accepts it. Catch that failure.
-A valid `user.interrupt` with no run returns 202 and `accepted: false` instead; the two outcomes
-need different handling. Validation does not make runtime batch effects an atomic transaction.
+**What actually happens.** This contract now exists. Declare up to 32 entries under
+`resource.custom_tools`; the run emits `agent.custom_tool_use` and waits; your application resolves
+the `callId` with `resolveCustomToolCall()` / `resolve_custom_tool_call()` or a
+`user.custom_tool_result` event. Result content accepts bounded text, JSON, and base64 images.
+`listCustomToolCalls({ status: 'pending' })` / `list_custom_tool_calls(status="pending")` recovers
+work after a process restart. The Session reports `run_status: 'awaiting_approval'` while paused,
+so use the separate `pending_custom_tool_calls` count to distinguish this from human approval.
 
-**This is structural, not a roadmap gap.** A run is a closed decision path: the tool call is chosen
-and recorded before the sandbox executes anything, so handing execution back to your process would
-park a committed run on an external HTTP wait, holding its turn budget. Do not tell a user it is
-coming.
+**Current evidence boundary.** Types, public routes, validation, lifecycle, and error behavior are
+source-reviewed and covered by offline SDK tests. They have not been driven through a live
+deployment. A 202 result receipt with `signaled: true` can remain pending until the run consumes
+it; do not interpret it as completed execution.
 
-**What to do instead - option 1: wrap your service as a remote HTTP MCP server.** This is real and
+**Use MCP instead when the platform should call a remote server directly.** This is real and
 has been exercised end to end for public, unauthenticated servers: the tools appear in the model's
 manifest as `mcp__<server>__<tool>` and really execute.
 
@@ -49,6 +50,9 @@ await zc.createAgent({
       url: 'https://mcp.example.com/mcp',
       transport: 'streamable-http',
       exposure: 'deferred', // omission default; use 'direct' for the first model request
+      context: { meta: true }, // opt-in runtime ids; context, not authentication
+      permission: 'always_ask',
+      tools: { quote: { permission: 'always_allow' } }, // exact native tool name
     }],
     //      ^ no underscore: tool names are `mcp__<server>__<tool>`, so an underscore in the
     //        server name makes the split ambiguous and the server is rejected
@@ -69,14 +73,27 @@ Deferred tools load through `tool_search` / `tool_describe` and remain available
 the same Session. `direct` declares them on the first model request. These loading details are
 source-reviewed, not deployment-verified here.
 
-The real limit is identity. `McpServerDeclaration.credential` names a slug for a single static
+Runtime context and approval behavior are separate opt-ins. `context.meta` adds
+`_meta["ai.zooclaw/context"]`; `context.headers` adds `x-zooclaw-*` headers to tool execution.
+Both default to false, catalog discovery carries neither, and intermediaries may strip headers.
+The context can include agent/session/computer ids and optional run/turn/config/actor fields, but
+it is not authentication and must not be trusted as proof of the caller.
+
+`permission` sets `always_ask` or `always_allow` for the server, while `tools` overrides exact
+native MCP tool names. Wildcards are not accepted in `tools`, and the map is capped at 64 entries.
+Omission is default-allow. An allow-always decision on the server wildcard covers every tool from
+that server for the Session. These are source-reviewed declarations; the approval loop below
+remains unverified.
+
+The real limit is authenticated identity. `McpServerDeclaration.credential` names a slug for a single static
 bearer token, and the endpoint that would store the secret behind that slug answers 404 through the
 gateway by design - so **authenticated MCP is not usable**. The declared credential is one shared
-value for the whole agent in any case, so every end user's request arrives at your server with the
-same identity. If your product needs to act as the signed-in user, this option cannot get you
-there.
+value for the whole agent in any case. Runtime context can identify an `actorUid` when available,
+but it is not a credential or a signed assertion. If your product needs to act as the signed-in
+user, this option cannot get you there without your own authentication layer in front of the MCP
+server.
 
-**What to do instead - option 2: keep the decision in your own process.** Let the turn finish, do
+**Use a second turn when you do not want to park a run.** Let the turn finish, do
 the work yourself, and post the answer as the next message. It costs one extra turn and it is
 entirely inside the verified surface.
 
@@ -174,7 +191,7 @@ problem above. Treat it as an experiment to run, not a recipe to hand over.
 **What you would build.** Declare acceptance criteria on a session, let the agent iterate until it
 meets them, and read a grade off the result.
 
-**What actually happens.** Not on a session. There is no outcome event among the four write-side
+**What actually happens.** Not on a session. There is no outcome event among the five write-side
 types, no rubric field on `createSession`, and no score in any session event payload.
 
 **What to do instead - unattended cron work has the real thing.** A schedule's `payload.outcome`
@@ -206,6 +223,9 @@ The source-reviewed SDK contract includes `requested_at`, optional string `argum
 compatibility, not the request timestamp to depend on. Where unsupported, the route returns
 `501 not_configured`. The list filter accepts only omitted status or `pending`.
 Deployment support, REST/event round-trip behavior and turn-budget handling need separate checks.
+An `allow-always` decision resolved against an MCP server wildcard applies to all of that server's
+tools for the Session, not just the tool that first prompted. Use exact per-tool overrides where
+that broader grant is unsafe.
 
 **Keep dangerous actions gated until verified.** If a product cannot depend on this path, let the
 turn finish, show its proposed action to a reviewer in your own product, then post the approved
@@ -218,9 +238,10 @@ instruction as a new message. Do not describe unverified budget behavior as a me
 **What you would build.** One inbox: every session belonging to every agent you own, newest first,
 one call.
 
-**What actually happens.** There is no top-level sessions collection. `listSessions(agentId,
-{ page })` is per agent, newest first by `updated_at`, 50 rows per page, `page` is 1-based, and the
-response carries no cursor.
+**What actually happens.** There is no top-level sessions collection. The legacy
+`listSessions(agentId, { page })` / `list_sessions(agent_id, page=...)` lane is per Agent, newest
+first and fixed at 50 rows. The separate `listSessionPage()` / `list_session_page()` cursor lane
+adds filters and resumable scans, but it is still per Agent.
 
 **What to do instead.** Fan out over `listAgents()` and call `listSessions` per agent - but know
 the trap before you rely on it: `listAgents` is scoped to your key's bound user *and* your
@@ -299,13 +320,15 @@ repository. Note the asymmetry with skills, which *do* have pinning -
 **What you would build.** Run the sandbox on your own machines - your worker pool, your network,
 your data never leaving it - while the platform still drives the agent loop.
 
-**What actually happens.** Nothing exposes it. There is no worker registration, no work queue to
-subscribe to, and no environment key that would point execution somewhere else. Environments
-customize what is installed inside the platform's sandbox; they do not relocate it.
+**What actually happens.** Nothing relocates the sandbox or exposes a worker fleet. There is no
+worker registration, durable background queue, or environment key that points sandbox execution
+somewhere else. Environments customize what is installed inside the platform sandbox. Custom
+tools let a waiting run request work from your application, but do not turn your process into a
+registered sandbox worker.
 
-**What to do instead.** If the goal is reaching a private system, run a public MCP endpoint at the
-edge of your network - which must be safe to expose unauthenticated, per the first entry - or keep
-that work in your own process entirely and pass results in as messages. If the goal is
+**What to do instead.** If the goal is reaching a private system, use an application-executed
+custom tool, run a public MCP endpoint at the edge of your network - which must be safe to expose
+unauthenticated - or keep that work in your own process between turns. If the goal is
 controlling egress, note that a sandbox's default network policy is `unrestricted`; an Environment
 with `networking: { type: 'limited', allowed_hosts: [...] }` is the way to narrow it, and it is a
 create-time decision because the Environment pin freezes on first sandbox creation.
@@ -316,11 +339,11 @@ create-time decision because the Environment pin freezes on first sandbox creati
 
 | Absent | What you actually see | Nearest thing that works |
 |---|---|---|
-| A CLI | The package ships a library only; there is no executable | Every operation is a client method, or a raw HTTP call to the same routes |
+| A CLI | Both SDK packages ship libraries, not an executable | Use TypeScript, Python, or raw HTTP |
 | `agent_with_overrides` on session create | `createSession` accepts `initial_events` and `metadata`, nothing else | `updateAgent` (bumps `config_version`), or a second agent for the second configuration |
 | Per-session tool or MCP overrides | `tool_policy` and `mcp` are agent-level fields on `AgentResource` | One agent per tool configuration; every session of an agent sees the same set |
 | Session `PATCH` | `405 Method Not Allowed`: the gateway proxies GET/POST/PUT/DELETE only, so PATCH is not proxied for any resource | Session `metadata` is write-once at `createSession`; keep mutable per-conversation state in your own store |
-| `session.status_*`, `span.*`, `stop_reason` as turn signals | None of them is an event type; `SESSION_EVENT_TYPES` has 19 entries and none of these. (`stopReason` does appear at `payload.message.stopReason` on an `agent.assistant` event, but it describes that one message, not the turn) | A turn ends at `run.finished`; the outcome is `runOutcome(ev)` |
+| `session.status_*`, `span.*`, `stop_reason` as turn signals | None of them is an event type; `SESSION_EVENT_TYPES` has 20 entries and none of these. (`stopReason` does appear at `payload.message.stopReason` on an `agent.assistant` event, but it describes that one message, not the turn) | A turn ends at `run.finished`; the outcome is `runOutcome(ev)` / `run_outcome(event)` |
 | A credential API | None exists | Nothing. Model credentials are seeded by the platform; your own secrets stay in your process |
 | Installing global skills | `listSkills({ scope: 'global' })` lists them; `putAgentSkill` on one answers 404 | Nothing to do: the global catalog is already attached to a new agent. Upload your own with `scope: 'org'` or `'personal'` |
 | Rich environment builds | `config` takes exactly `packages` (apt/npm/pip only), `files`, `build`, `networking`; anything else is `400 invalid_environment_config`. No user-defined secrets, env vars, or start hooks — the platform injects its own runtime credentials for built-in skills, but that layer is internal and not extensible | Install through `packages` and `build.script`; fetch anything secret at run time from your own service |
@@ -334,8 +357,8 @@ create-time decision because the Environment pin freezes on first sandbox creati
 
 ## When you are unsure
 
-The SDK's shipped `dist/index.d.ts` carries a JSDoc note on nearly every method recording what was
-actually observed against a live deployment, including which routes were never exercised. Prefer it
-over anything recalled. When a capability is not mentioned here and not in
-`references/typescript-sdk.md`, say that it is unverified rather than guessing an answer in either
-direction - a reader who knows they must check is better off than one who trusts a wrong recipe.
+The TypeScript SDK's shipped `dist/index.d.ts` and the Python package's public annotations carry
+the exact client signatures. Prefer them over anything recalled, then use
+`references/typescript-sdk.md` or `references/python-sdk.md` for the reviewed behavior and
+verification status. When a capability is absent from both the selected SDK and these references,
+say that it is unverified rather than guessing in either direction.

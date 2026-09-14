@@ -8,7 +8,7 @@ quietly degrade another, and nothing fails loudly when it does. These evals are 
 Each eval is a realistic task prompt plus assertions about the code an assistant produces in
 response. The assertions target the specific mistakes an assistant makes on this API *without* the
 skill - waiting on `actual_state` forever, forgetting `startAgent()`, treating one page of
-`listEvents` as a whole session, inventing a custom-tool API that does not exist.
+`listEvents` as a whole session, or missing the Python custom-tool and cursor APIs.
 
 That framing is the point: an assertion only earns its place if an unaided assistant plausibly fails
 it. An assertion both arms pass tells you nothing about whether the skill works.
