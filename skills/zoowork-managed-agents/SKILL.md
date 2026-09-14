@@ -1,6 +1,6 @@
 ---
 name: zoowork-managed-agents
-description: Build on ZooWork Managed Agents - hosted AI agents that run in a managed sandbox, driven from your own code through the `@zoowork-ai/sdk` TypeScript SDK. Use this skill whenever ZooWork is mentioned; on any `zct_` key, `agt_` or `skl_` id, `ZOOWORK_API_KEY`, `ZOOWORK_BASE_URL`, `@zoowork-ai/sdk`, `createZooworkClient`, `waitUntilRunning`, `putAgentSkill`, `startFeishuSetup`, binding a Feishu/Lark channel to an agent, or the ZooWork App Kit; on the errors `agent_not_running`, `environment_locked`, `session_archived`, `exec_requires_agent_scope`, or `environment_not_ready`; and when someone wants a ZooWork agent they built locally, with its skills, hosted somewhere it can serve real users. Read it before writing any ZooWork call - code that merely looks right here compiles and then fails at runtime.
+description: Build on ZooWork Managed Agents - hosted AI agents that run in a managed sandbox, driven from your own code through the `@zoowork-ai/sdk` TypeScript SDK. Use this skill whenever ZooWork is mentioned; on any `zct_` key, `agt_` or `skl_` id, `ZOOWORK_API_KEY`, `ZOOWORK_BASE_URL`, `@zoowork-ai/sdk`, `createZooworkClient`, `waitUntilRunning`, `putAgentSkill`, MCP context or permissions, channel binding for Feishu/Lark or DingTalk, or the ZooWork App Kit; on the errors `agent_not_running`, `environment_locked`, `session_archived`, `exec_requires_agent_scope`, or `environment_not_ready`; and when someone wants a ZooWork agent they built locally, with its skills, hosted somewhere it can serve real users. Read it before writing any ZooWork call - code that merely looks right here compiles and then fails at runtime.
 license: MIT
 ---
 
@@ -276,7 +276,7 @@ Uploading a local skill directory and attaching it is the core of
 | The user wants to | Read |
 |---|---|
 | A signature, a return shape, or a method you are not certain exists | `references/typescript-sdk.md` - all 62 client methods by area |
-| Cron schedules (including the `payload.outcome` gate), running a command in the sandbox (`exec`), `wake`, environments, approvals, artifacts, the system prompt, or channels (binding Feishu/Lark) | `references/typescript-sdk.md` - these surfaces appear **nowhere else in this skill**, and each has a trap worth a debugging session (schedule reads and writes speak different vocabularies; `exec` needs an agent-scope sandbox; artifact routes need selectors the SDK derives for you) |
+| Cron schedules (including the `payload.outcome` gate), running a command in the sandbox (`exec`), `wake`, environments, approvals, artifacts, the system prompt, MCP policy/context, or channels (including Feishu and DingTalk) | `references/typescript-sdk.md` - these surfaces appear **nowhere else in this skill**, and each has a trap worth a debugging session (schedule reads and writes speak different vocabularies; `exec` needs an agent-scope sandbox; artifact routes need selectors the SDK derives for you) |
 | To consume the stream, read history, reconnect, or render tool calls | `references/events-and-streaming.md` |
 | To host an agent they built locally, with its skills - or to run an agent per end user and keep one skill updating the whole fleet | `references/deploy-your-agent.md` - **follow it in order, do not summarize it** |
 | Something you suspect is not supported (custom tools, vaults, webhooks, file uploads, approvals, memory) | `references/not-supported.md` - **read before designing**, each entry names the real alternative |
@@ -295,9 +295,14 @@ either over recalling a shape.
 - **There is no custom tool type and no tool-result event.** The agent cannot call back into your
   process mid-turn. `references/not-supported.md` - Client-executed custom tools has the two real
   alternatives (a remote MCP server, or doing the work between turns).
-- **MCP exposure is explicit.** Omit `exposure` or use `'deferred'` to load tools through
-  `tool_search` / `tool_describe`; use `'direct'` to declare them on the first model request.
-  There is no `'auto'`. This does not change the current public-server-only credential boundary.
+- **MCP exposure, context, and permission are separate.** `exposure` controls when tools enter the
+  model context. `context.meta` / `context.headers` opt runtime identifiers into tool calls; those
+  identifiers are not authentication. `permission` is the server default and `tools` overrides
+  exact native tool names (no wildcards, 64 maximum). Omission keeps default-allow behavior, and
+  an allow-always decision on the server wildcard covers all of that server's tools for the
+  Session. The end-to-end approval loop remains unverified.
+- **Tool-policy wildcard syntax is narrow.** Use an exact name, global `*`, or one trailing
+  `prefix*`. Other `*` placements match nothing. `alsoAllow` stays exact-only.
 - **There is no credential API.** The platform seeds model credentials itself at create, and there
   is no store for your end users' secrets — those belong on your own service.
 - **An Environment choice locks permanently** on first sandbox creation. `stopAgent()` does not

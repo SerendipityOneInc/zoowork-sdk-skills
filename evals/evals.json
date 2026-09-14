@@ -490,6 +490,145 @@
           ]
         }
       ]
+    },
+    {
+      "id": 12,
+      "name": "mcp-runtime-context-and-permissions",
+      "prompt": "Configure our public ZooWork MCP server so each tool call receives agent/session context in MCP metadata, every tool asks for approval by default, but the native tool named lookup_customer is always allowed. Explain whether this authenticates the caller and what an allow-always decision at server scope grants.",
+      "expected_output": "Use context.meta, server permission always_ask, and an exact tools.lookup_customer always_allow override. State that runtime context is not authentication and server-scope allow-always covers every server tool for that Session.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "opts into MCP metadata context",
+          "kind": "present",
+          "patterns": [
+            "context\\s*:\\s*\\{[\\s\\S]{0,80}meta\\s*:\\s*true"
+          ]
+        },
+        {
+          "name": "sets a server approval default",
+          "kind": "present",
+          "patterns": [
+            "permission\\s*:\\s*['\"]always_ask['\"]"
+          ]
+        },
+        {
+          "name": "uses an exact native tool override",
+          "kind": "present",
+          "patterns": [
+            "lookup_customer[\\s\\S]{0,100}permission\\s*:\\s*['\"]always_allow['\"]"
+          ]
+        },
+        {
+          "name": "does not treat context as authentication",
+          "kind": "present",
+          "patterns": [
+            "context[\\s\\S]{0,100}(?:not|isn't|is not)[\\s\\S]{0,60}auth",
+            "(?:not|isn't|is not)[\\s\\S]{0,60}auth[\\s\\S]{0,100}context"
+          ]
+        },
+        {
+          "name": "explains server wildcard grant scope",
+          "kind": "present",
+          "patterns": [
+            "allow-always[\\s\\S]{0,180}(?:all|every)[\\s\\S]{0,80}(?:server|Session)",
+            "server[ -](?:scope|wide|wildcard)[\\s\\S]{0,180}(?:all|every)[\\s\\S]{0,60}tool"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "name": "tool-policy-prefix-patterns",
+      "prompt": "I want a ZooWork tool policy that applies to every tool from MCP server pricing, but alsoAllow should grant only one exact tool. Which wildcard forms actually work? Please show the relevant object and call out mcp__*__quote and *search.",
+      "expected_output": "Use a single trailing prefix pattern such as mcp__pricing__*, keep alsoAllow exact, and say embedded or leading wildcard forms match nothing. Mention global * and exact names as the other supported forms.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "uses the supported trailing-prefix pattern",
+          "kind": "present",
+          "patterns": [
+            "mcp__pricing__\\*"
+          ]
+        },
+        {
+          "name": "keeps alsoAllow exact",
+          "kind": "present",
+          "patterns": [
+            "alsoAllow[\\s\\S]{0,180}exact",
+            "exact[\\s\\S]{0,180}alsoAllow"
+          ]
+        },
+        {
+          "name": "rejects unsupported wildcard placements",
+          "kind": "present",
+          "patterns": [
+            "mcp__\\*__quote[\\s\\S]{0,120}(?:[Mm]atches? nothing|does not match|won't match)",
+            "\\*search[\\s\\S]{0,120}(?:[Mm]atches? nothing|does not match|won't match)"
+          ]
+        },
+        {
+          "name": "names global and exact forms",
+          "kind": "present",
+          "patterns": [
+            "global[\\s\\S]{0,40}`?\\*`?[\\s\\S]{0,220}exact",
+            "exact[\\s\\S]{0,220}global[\\s\\S]{0,40}`?\\*`?"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "name": "dingtalk-and-feishu-document-channels",
+      "prompt": "Show TypeScript SDK examples for directly binding a DingTalk channel and for enabling Feishu document permission administration. How do I tell whether the Feishu capability is actually ready, and can DingTalk use startChannelSetup?",
+      "expected_output": "Use dingtalk-connector with clientId/clientSecret and dm_policy open; do not route DingTalk through guided setup. Use permission_admin_enabled for Feishu and inspect capabilities.feishu_documents sync/provider/missing_scopes/approval_state instead of trusting the request alone. Mark these details source-reviewed rather than live-verified.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "uses the DingTalk direct platform and credentials",
+          "kind": "present",
+          "patterns": [
+            "dingtalk-connector[\\s\\S]{0,220}clientId[\\s\\S]{0,100}clientSecret"
+          ]
+        },
+        {
+          "name": "uses DingTalk open DM policy",
+          "kind": "present",
+          "patterns": [
+            "dm_policy\\s*:\\s*['\"]open['\"]"
+          ]
+        },
+        {
+          "name": "does not offer DingTalk guided setup",
+          "kind": "absent",
+          "patterns": [
+            "startChannelSetup\\([^)]*['\"]dingtalk(?:-connector)?['\"]"
+          ]
+        },
+        {
+          "name": "enables and verifies Feishu document permission state",
+          "kind": "present",
+          "patterns": [
+            "permission_admin_enabled\\s*:\\s*true[\\s\\S]{0,500}capabilities[\\s\\S]{0,100}feishu_documents",
+            "capabilities[\\s\\S]{0,100}feishu_documents[\\s\\S]{0,500}permission_admin_enabled\\s*:\\s*true"
+          ]
+        },
+        {
+          "name": "checks readiness details",
+          "kind": "present",
+          "patterns": [
+            "(?=[\\s\\S]*\\bsync\\b)(?=[\\s\\S]*\\bprovider\\b)(?=[\\s\\S]*(?:missing_scopes|approval_state))"
+          ]
+        },
+        {
+          "name": "does not overclaim deployment verification",
+          "kind": "present",
+          "patterns": [
+            "source-reviewed",
+            "not (?:deployment-|live-)?verified"
+          ]
+        }
+      ]
     }
   ]
 }

@@ -49,6 +49,9 @@ await zc.createAgent({
       url: 'https://mcp.example.com/mcp',
       transport: 'streamable-http',
       exposure: 'deferred', // omission default; use 'direct' for the first model request
+      context: { meta: true }, // opt-in runtime ids; context, not authentication
+      permission: 'always_ask',
+      tools: { quote: { permission: 'always_allow' } }, // exact native tool name
     }],
     //      ^ no underscore: tool names are `mcp__<server>__<tool>`, so an underscore in the
     //        server name makes the split ambiguous and the server is rejected
@@ -69,12 +72,25 @@ Deferred tools load through `tool_search` / `tool_describe` and remain available
 the same Session. `direct` declares them on the first model request. These loading details are
 source-reviewed, not deployment-verified here.
 
-The real limit is identity. `McpServerDeclaration.credential` names a slug for a single static
+Runtime context and approval behavior are separate opt-ins. `context.meta` adds
+`_meta["ai.zooclaw/context"]`; `context.headers` adds `x-zooclaw-*` headers to tool execution.
+Both default to false, catalog discovery carries neither, and intermediaries may strip headers.
+The context can include agent/session/computer ids and optional run/turn/config/actor fields, but
+it is not authentication and must not be trusted as proof of the caller.
+
+`permission` sets `always_ask` or `always_allow` for the server, while `tools` overrides exact
+native MCP tool names. Wildcards are not accepted in `tools`, and the map is capped at 64 entries.
+Omission is default-allow. An allow-always decision on the server wildcard covers every tool from
+that server for the Session. These are source-reviewed declarations; the approval loop below
+remains unverified.
+
+The real limit is authenticated identity. `McpServerDeclaration.credential` names a slug for a single static
 bearer token, and the endpoint that would store the secret behind that slug answers 404 through the
 gateway by design - so **authenticated MCP is not usable**. The declared credential is one shared
-value for the whole agent in any case, so every end user's request arrives at your server with the
-same identity. If your product needs to act as the signed-in user, this option cannot get you
-there.
+value for the whole agent in any case. Runtime context can identify an `actorUid` when available,
+but it is not a credential or a signed assertion. If your product needs to act as the signed-in
+user, this option cannot get you there without your own authentication layer in front of the MCP
+server.
 
 **What to do instead - option 2: keep the decision in your own process.** Let the turn finish, do
 the work yourself, and post the answer as the next message. It costs one extra turn and it is
@@ -206,6 +222,9 @@ The source-reviewed SDK contract includes `requested_at`, optional string `argum
 compatibility, not the request timestamp to depend on. Where unsupported, the route returns
 `501 not_configured`. The list filter accepts only omitted status or `pending`.
 Deployment support, REST/event round-trip behavior and turn-budget handling need separate checks.
+An `allow-always` decision resolved against an MCP server wildcard applies to all of that server's
+tools for the Session, not just the tool that first prompted. Use exact per-tool overrides where
+that broader grant is unsafe.
 
 **Keep dangerous actions gated until verified.** If a product cannot depend on this path, let the
 turn finish, show its proposed action to a reviewer in your own product, then post the approved

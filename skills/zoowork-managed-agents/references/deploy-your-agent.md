@@ -126,10 +126,12 @@ returned a flat receipt with a top-level `config_version` and no `declared` at a
 `agent.status?.config_version ?? agent.config_version` if you need one expression for both. Confirm
 `declared.persona` holds the text you sent; that is the proof the persona landed, not the 201.
 
-**On `tool_policy`.** The SDK types it `Record<string, unknown>` and pins no key names, and the only
-value ever observed on a real agent is the empty object `{}`. Omit it unless your deployment handed
-you a concrete policy vocabulary - anything you invent is unverified, and the create will not tell
-you which of your keys it ignored.
+**On `tool_policy`.** The SDK keeps the object open, but source review now fixes the matching
+syntax: exact names, global `*`, or one trailing `prefix*` work in allow/deny/rule match/afterRules
+and deferred MCP pinned entries. Other `*` placements match nothing, and `alsoAllow` remains
+exact-only. The only value observed on a real agent is still `{}`; a narrowed policy has not been
+deployment-verified. After provisioning, run a turn that should be blocked and inspect
+`agent.tool` instead of treating a successful create as proof the policy took effect.
 
 ---
 
