@@ -1,6 +1,6 @@
 ---
 name: zoowork-managed-agents
-description: Build on ZooWork Managed Agents - hosted AI agents driven through the `@zoowork-ai/sdk` TypeScript SDK or `zoowork` Python SDK. Use this skill whenever ZooWork is mentioned; on any `zct_` key, `agt_` or `skl_` id, `ZOOWORK_API_KEY`, `ZOOWORK_BASE_URL`, `@zoowork-ai/sdk`, `createZooworkClient`, `create_zoowork_client`, `waitUntilRunning`, `wait_until_running`, `putAgentSkill`, custom tools, filtered Session cursors, MCP context or permissions, channel binding for Feishu/Lark or DingTalk, or the ZooWork App Kit; on the errors `agent_not_running`, `environment_locked`, `session_archived`, `exec_requires_agent_scope`, or `environment_not_ready`; and when someone wants a ZooWork agent they built locally, with its skills, hosted somewhere it can serve real users. Read it before writing any ZooWork call - code that merely looks right here can pass local checks and fail at runtime.
+description: Build on ZooWork Managed Agents - hosted AI agents driven through the `@zoowork-ai/sdk` TypeScript SDK or `zoowork` Python SDK. Use this skill whenever ZooWork is mentioned; on any `zct_` key, `agt_` or `skl_` id, `ZOOWORK_API_KEY`, `ZOOWORK_BASE_URL`, `@zoowork-ai/sdk`, `createZooworkClient`, `create_zoowork_client`, `waitUntilRunning`, `wait_until_running`, `putAgentSkill`, model lifecycle, deleted Session tombstones, global Skill opt-out, Agent timezone, usage or billing, custom tools, filtered Session cursors, MCP context or permissions, channel binding for Feishu/Lark or DingTalk, or the ZooWork App Kit; on the errors `agent_not_running`, `model_not_selectable`, `environment_locked`, `session_archived`, `exec_requires_agent_scope`, or `environment_not_ready`; and when someone wants a ZooWork agent they built locally, with its skills, hosted somewhere it can serve real users. Read it before writing any ZooWork call - code that merely looks right here can pass local checks and fail at runtime.
 license: MIT
 ---
 
@@ -122,7 +122,9 @@ const zc = createZooworkClient()
 
 // 1. Ask which models this deployment carries. A recalled id is a 400, not a fallback.
 const models = await zc.listModels()
-const model = models.find((m) => m.model === 'litellm/gpt-5.6-terra')?.model
+const model = models.find(
+  (m) => m.model === 'litellm/gpt-5.6-terra' && m.selectable !== false,
+)?.model
 if (!model) throw new Error('choose an explicit model returned by listModels()')
 
 // 2. Create. Ownership comes from your API key - the SDK handles it, nothing to pass.
@@ -131,6 +133,7 @@ const created = await zc.createAgent(
     resource: {
       name: 'support-agent',
       model: { primary: model },
+      userTimezone: 'Asia/Shanghai', // IANA name; does not set Schedule timezone
       // persona.docs is an ARRAY of documents, not a filename-keyed object.
       persona: { docs: [{ name: 'AGENTS.md', content: 'You answer questions about our billing policy.' }] },
     },
@@ -183,8 +186,15 @@ from zoowork import assistant_text, create_zoowork_client, is_run_finished
 
 async with create_zoowork_client() as client:
     models = await client.list_models()
+    model = next((m["model"] for m in models if m.get("selectable") is not False), None)
+    if model is None:
+        raise RuntimeError("no selectable ZooWork model")
     created = await client.create_agent(
-        {"name": "support-agent", "model": {"primary": models[0]["model"]}},
+        {
+            "name": "support-agent",
+            "model": {"primary": model},
+            "userTimezone": "Asia/Shanghai",
+        },
         idempotency_key="support-agent-v1",
     )
     agent_id = created["agent_id"]
@@ -279,8 +289,14 @@ deployment-verified. Read the language-specific SDK reference before implementin
 Keep the legacy methods for numeric paging: `listSessions(agentId, { page })` and
 `list_sessions(agent_id, page=...)`. For filters and resumable scans, use `listSessionPage()` or
 `list_session_page()`. The SDK selects the cursor lane with initial cursor `sls1:0`; preserve the
-same channel, surface, runtime-mode, and archive filters for every continuation. Cursors are opaque
-and bound to the Agent and filter scope. Each row has `list_cursor`; the page has `next_cursor`.
+same channel, surface, runtime-mode, archive, and deleted filters for every continuation. Cursors
+are opaque and bound to the Agent and filter scope. Each row has `list_cursor`; the page has
+`next_cursor`.
+
+Deleted Sessions are omitted by default. Reconciliation jobs can set `includeDeleted: true` or
+`include_deleted=True`; tombstone rows carry `deleted: true`, and the page confirms the mode with
+`includes_deleted: true`. A tombstone identifies an id that was deleted; it is not a readable
+Session resource.
 
 ## Skills (quick reference)
 
@@ -298,7 +314,10 @@ Four things surprise everyone:
 - **A brand-new agent already has the global catalog attached** (document skills like `docx`,
   `pptx`, `xlsx`, `pdf` among them). You do not install those, and `putAgentSkill()` against a
   `global` entry answers **404** - it is already attached, you just cannot control it. Do not retry
-  that 404 and do not write a provisioning step that installs what it found in the catalog.
+  that 404 and do not write a provisioning step that installs what it found in the catalog. When
+  the Agent should not receive automatic global Skills, create or update it with
+  `include_global_skills: false`; an explicit `skills: []` at create also opts out. Explicitly
+  installed Skills remain available, and the opt-out persists across later updates and rerenders.
 - **The zip's top-level directory name must equal the `name` in `SKILL.md`'s frontmatter.** This is
   the single most common first failure. `uploadSkill()` takes the zip plus a required
   `{ scope: 'org' | 'personal' }`; `global` is refused on upload.
@@ -320,6 +339,13 @@ Four things surprise everyone:
 Uploading a local skill directory and attaching it is the core of
 `references/deploy-your-agent.md` - read it when the user has skills of their own.
 
+## Usage and billing
+
+Direct users to <https://platform.zoowork.ai/settings/usage> for API usage and costs. Managed
+Agents has no public Usage API through the SDKs or HTTP API. Do not invent a client method or
+document an internal service route; read `references/not-supported.md` when an application asks
+to fetch usage programmatically.
+
 ---
 
 ## Reading guide
@@ -331,7 +357,7 @@ Uploading a local skill directory and attaching it is the core of
 | Cron schedules (including the `payload.outcome` gate), running a command in the sandbox (`exec`), `wake`, environments, approvals, artifacts, the system prompt, MCP policy/context, or channels (including Feishu and DingTalk) | `references/typescript-sdk.md` - these surfaces appear **nowhere else in this skill**, and each has a trap worth a debugging session (schedule reads and writes speak different vocabularies; `exec` needs an agent-scope sandbox; artifact routes need selectors the SDK derives for you) |
 | To consume the stream, read history, reconnect, or render tool calls | `references/events-and-streaming.md` |
 | To host an agent they built locally, with its skills - or to run an agent per end user and keep one skill updating the whole fleet | `references/deploy-your-agent.md` - **follow it in order, do not summarize it** |
-| Something you suspect is not supported (worker queues, vaults, webhooks, file uploads, approvals, memory) | `references/not-supported.md` - **read before designing**, each entry names the real alternative |
+| Something you suspect is not supported (usage API, worker queues, vaults, webhooks, file uploads, approvals, memory) | `references/not-supported.md` - **read before designing**, each entry names the real alternative |
 
 For anything none of those cover, use the shipped TypeScript `dist/index.d.ts` or Python source
 and type annotations as the authority. Developer documentation is at
@@ -344,6 +370,10 @@ and type annotations as the authority. Developer documentation is at
   query failure can remain `activating`, and list/GET may briefly differ. `running` is not one of
   its values. `waitUntilRunning()` polls `desired_state` and throws `408`/`'timeout'` on a spent
   budget.
+- **A model catalog row is not necessarily selectable.** Filter for `selectable !== false` in
+  TypeScript or `row.get("selectable") is not False` in Python before provisioning. A draining or
+  retired row may remain visible for an existing Agent; selecting it for a new config returns
+  `409 model_not_selectable`. Refresh the catalog and use `expired_fallback_to` when supplied.
 - **Custom tools and MCP tools have different execution owners.** A custom tool parks the run while
   your application executes and resolves it. MCP runs on a remote server called by the platform.
   Neither is a general worker-registration or background-queue API.

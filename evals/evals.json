@@ -740,6 +740,61 @@
           ]
         }
       ]
+    },
+    {
+      "id": 17,
+      "name": "lifecycle-tombstones-opt-out-timezone-and-usage-boundary",
+      "prompt": "We are provisioning a TypeScript ZooWork agent for a Shanghai user. Pick an available model safely, disable the automatically attached global Skills, and write a reconciliation loop that includes deleted Sessions. Our admin UI also needs to show customers where to inspect API usage and cost. Give me the code and the supported product boundary.",
+      "expected_output": "Filter listModels rows by selectable, set userTimezone and include_global_skills on the Agent resource, use listSessionPage with includeDeleted while preserving cursor filters and recognize deleted tombstones, and link to the ZooWork Platform Usage page without inventing a public Usage API.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "filters the model catalog for selectable rows",
+          "kind": "present",
+          "patterns": [
+            "selectable\\s*!==\\s*false",
+            "selectable\\s*===\\s*true"
+          ]
+        },
+        {
+          "name": "sets the Agent user timezone",
+          "kind": "present",
+          "patterns": [
+            "userTimezone\\s*:\\s*['\"]Asia/Shanghai['\"]"
+          ]
+        },
+        {
+          "name": "opts out of automatic global Skills",
+          "kind": "present",
+          "patterns": [
+            "include_global_skills\\s*:\\s*false"
+          ]
+        },
+        {
+          "name": "requests and handles deleted Session tombstones",
+          "kind": "present",
+          "patterns": [
+            "(?=[\\s\\S]*listSessionPage)(?=[\\s\\S]*includeDeleted\\s*:\\s*true)(?=[\\s\\S]*\\.deleted\\b)"
+          ]
+        },
+        {
+          "name": "points usage and cost readers to ZooWork Platform",
+          "kind": "present",
+          "patterns": [
+            "platform\\.zoowork\\.ai/settings/usage"
+          ]
+        },
+        {
+          "name": "does not invent a public Usage API",
+          "kind": "absent",
+          "patterns": [
+            "\\.getUsage\\s*\\(",
+            "\\.listUsage\\s*\\(",
+            "/service/v1/usage",
+            "/platform/v1/usage"
+          ]
+        }
+      ]
     }
   ]
 }
