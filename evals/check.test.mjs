@@ -78,3 +78,27 @@ test('Python SDK tripwires keep snake_case custom-tool and cursor methods', () =
     # source-reviewed, not deployment-verified
   `).status, 0)
 })
+
+test('lifecycle and Platform boundary tripwire rejects unsafe model and invented Usage APIs', () => {
+  assert.equal(check(17, `
+    const model = (await zc.listModels())[0].model
+    const usage = await zc.getUsage()
+    await fetch('/service/v1/usage')
+  `).status, 1)
+
+  assert.equal(check(17, `
+    const model = (await zc.listModels()).find((row) => row.selectable !== false)?.model
+    const resource = {
+      model: { primary: model },
+      userTimezone: 'Asia/Shanghai',
+      include_global_skills: false,
+    }
+    let cursor
+    do {
+      const page = await zc.listSessionPage(agentId, { cursor, includeDeleted: true })
+      for (const session of page.sessions) if (session.deleted) reconcile(session.session_id)
+      cursor = page.next_cursor ?? undefined
+    } while (cursor)
+    // View usage and cost at https://platform.zoowork.ai/settings/usage
+  `).status, 0)
+})

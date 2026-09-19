@@ -17,6 +17,21 @@ this file answers it wherever the recorded evidence says do not build on it.
 
 ---
 
+## Programmatic usage and cost reporting
+
+**What you would build.** Fetch token, request, or cost totals through a Managed Agents SDK method
+or public HTTP endpoint and display them in your own product.
+
+**What actually happens.** Managed Agents currently exposes no public Usage API through either SDK
+or the HTTP API. Do not infer one from an internal service route or invent `getUsage()` /
+`get_usage()`. Users can view API usage and costs on the ZooWork Platform Usage page:
+<https://platform.zoowork.ai/settings/usage>.
+
+**What to do instead.** Link users to that Platform page. If the product requires programmatic
+export, treat it as an unsupported requirement until ZooWork publishes a public contract.
+
+---
+
 ## Application-executed custom tools
 
 **What you would build.** Declare a tool with a JSON schema, let the model decide to call it, run

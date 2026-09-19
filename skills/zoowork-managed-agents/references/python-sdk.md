@@ -17,6 +17,9 @@ from zoowork import create_zoowork_client
 
 async with create_zoowork_client() as client:
     models = await client.list_models()
+    model = next((row["model"] for row in models if row.get("selectable") is not False), None)
+    if model is None:
+        raise RuntimeError("no selectable ZooWork model")
 ```
 
 `create_zoowork_client()` reads `ZOOWORK_API_KEY` and `ZOOWORK_BASE_URL`. You may instead pass the
@@ -28,7 +31,11 @@ The mandatory lifecycle is:
 
 ```python
 agent = await client.create_agent(
-    {"name": "support-agent", "model": {"primary": models[0]["model"]}},
+    {
+        "name": "support-agent",
+        "model": {"primary": model},
+        "userTimezone": "Asia/Shanghai",
+    },
     idempotency_key="support-agent-v1",
 )
 agent_id = agent["agent_id"]
@@ -43,6 +50,12 @@ session = await client.create_session(
 `create_agent()` takes the resource dictionary directly. This differs from TypeScript, whose
 method takes `{ resource }`. Every Session method still takes `agent_id` first. Create an Agent
 once and persist its id; create a Session for each conversation.
+
+Do not choose the first model row blindly. `list_models()` can include lifecycle rows whose
+`selectable` value is false so existing Agents can continue to reference them. A new selection is
+rejected with `409 model_not_selectable`; refresh the catalog and use `expired_fallback_to` when
+present. `userTimezone` is the wire spelling for the Agent's named IANA timezone; it affects prompt
+context and message timestamps, not Schedule timezone.
 
 ## Events
 
@@ -86,6 +99,7 @@ while cursor is not None:
         include_surfaces=["inbox"],
         runtime_modes=["active"],
         include_archived=False,
+        include_deleted=True,
     )
     for row in page.sessions:
         await index(row)
@@ -97,6 +111,10 @@ is bound to the Agent and exact filter scope, so keep filters unchanged; invalid
 `400 invalid_cursor`. Each row can include `list_cursor` for resuming after a partially consumed
 page. `get_session()` and list rows can include `pending_approvals` and
 `pending_custom_tool_calls`; both are counts.
+
+Deleted Sessions are omitted by default. `include_deleted=True` adds tombstone rows with
+`deleted: true`, and `page.includes_deleted` confirms that mode. The option is part of the cursor
+scope and must stay unchanged while continuing. A tombstone is not a readable Session resource.
 
 ## Application-executed custom tools
 
@@ -155,11 +173,16 @@ not live deployment-verified.
 
 ## Agent configuration, MCP, and channels
 
-Agent resource dictionaries accept `model`, `persona`, `skills`, `labels`, `tool_policy`, `mcp`,
+Agent resource dictionaries accept `userTimezone`, `model`, `persona`, `skills`,
+`include_global_skills`, `labels`, `tool_policy`, `mcp`,
 `custom_tools`, `system_prompt`, `outcome`, `sandbox`, `environment_id`, and
 `environment_version`. `update_agent(agent_id, sections)` updates declared sections. Preserve the
 same contract cautions as TypeScript: `tool_policy` and array-valued sections replace their
 values; `config_version` increments but is not a rollback handle.
+
+`include_global_skills` defaults to true. False disables automatic global Skills without removing
+explicit installs and persists across updates and rerenders. An explicit empty `skills` list at
+create also opts out.
 
 MCP `context.meta` and `context.headers` explicitly opt runtime identifiers into calls; they are
 not authentication. `permission` sets `always_ask` or `always_allow` for the server, and `tools`

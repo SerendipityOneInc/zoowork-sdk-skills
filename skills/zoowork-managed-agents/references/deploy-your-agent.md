@@ -57,12 +57,16 @@ catalogs can differ and defaults can rotate.
 
 ```ts
 const models = await zc.listModels()
-const model = models.find((m) => m.model === 'litellm/gpt-5.6-terra')?.model
+const model = models.find(
+  (m) => m.model === 'litellm/gpt-5.6-terra' && m.selectable !== false,
+)?.model
 if (!model) throw new Error('choose an explicit model returned by listModels()')
 ```
 
-**Verify:** the list is non-empty and `model` is a full id including its prefix. This call touches
-no agent and creates nothing, so it doubles as the cheapest proof the key works.
+**Verify:** the selected row has `selectable !== false` and `model` is a full id including its
+prefix. The catalog can retain draining or retired rows for existing Agents; selecting one for a
+new config returns `409 model_not_selectable`. Refresh and use `expired_fallback_to` when present.
+This call touches no agent and creates nothing, so it doubles as the cheapest proof the key works.
 
 ---
 

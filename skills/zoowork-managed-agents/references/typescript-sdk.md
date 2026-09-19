@@ -55,7 +55,12 @@ Model ids are prefixed, e.g. `litellm/gpt-5.6-terra`. Both wire shapes (a bare a
 `anthropic-messages`, `openai-completions`, `openai-responses`, or a future string; preserve
 unknown values. Omitting `AgentResource.model` pins the server defaults current at create time.
 The current source default is Terra, but deployments can differ and the default can rotate;
-select a returned alias explicitly for repeatable provisioning.
+select a returned alias explicitly for repeatable provisioning. A catalog row can remain visible
+for an existing Agent while `selectable` is false. Filter with `row.selectable !== false` before a
+new create or update; otherwise the service answers `409 model_not_selectable`. Lifecycle fields
+include `expired_at`, `expired_fallback_to`, `retired_at`, `revision`, `lifecycle_status`,
+`retire_not_before`, and `default_for`. Refresh the catalog and prefer the replacement alias when
+one is supplied.
 
 ## Agents
 
@@ -96,9 +101,11 @@ optional except `name: string`:
 
 | Field | Type | Note |
 |---|---|---|
+| `userTimezone` | `string` | named IANA timezone used in prompt context and message timestamps; it does not set Schedule timezone |
 | `model` | `{ primary: string; input?: string[]; max_tokens?: number }` | prefixed id from `listModels()`; `max_tokens` caps output per model request (omit for the platform default) |
 | `persona` | `{ docs: { name: string; content: string; seed_policy?: string }[] }` | `docs` is an **array of documents**, not a filename-keyed object |
-| `skills` | `{ skill_id: string; version?: number \| 'latest' }[]` | declared on the type, but no recorded create exercised it - attach with `putAgentSkill` instead |
+| `skills` | `{ skill_id: string; version?: number \| 'latest' }[]` | explicit installs; an empty array at create opts out of automatic global Skills |
+| `include_global_skills` | `boolean` | defaults true; false disables automatic global Skills without removing explicit installs, and persists across updates and rerenders |
 | `labels` | `Record<string, string>` | what `listAgents({ labels })` filters on |
 | `tool_policy` | `Record<string, unknown>` | source-reviewed matching accepts exact names, global `*`, or one trailing `prefix*`; `alsoAllow` remains exact-only |
 | `mcp` | `McpServerDeclaration[]` | remote HTTP only; supports exposure, opt-in runtime context, server permission defaults, and exact per-tool overrides |
@@ -375,9 +382,12 @@ not record arrays. Use `listApprovals` or `listCustomToolCalls` for records. Fil
 also carry `runtime_mode`, `config_version`, `last_activity_at`, and opaque `list_cursor`.
 
 `listSessionPage` supports `limit` 1–100, `excludeChannels`, `includeSurfaces`, `runtimeModes`, and
-`includeArchived`. Omit `cursor` to start; the SDK sends `sls1:0`. Continue with `next_cursor`, keep
-filters identical, and never parse a cursor: it is bound to the Agent and filter scope. Invalid
-reuse returns `400 invalid_cursor`. This is source-reviewed and offline-tested, not live-verified.
+`includeArchived`. `includeDeleted: true` adds deleted Session tombstones, whose rows carry
+`deleted: true`; the page then carries `includes_deleted: true`. Omit `cursor` to start; the SDK
+sends `sls1:0`. Continue with `next_cursor`, keep filters including `includeDeleted` identical,
+and never parse a cursor: it is bound to the Agent and filter scope. Invalid reuse returns
+`400 invalid_cursor`. Tombstones are reconciliation records, not readable Session resources. This
+is source-reviewed and offline-tested, not live-verified.
 
 ## Events
 
