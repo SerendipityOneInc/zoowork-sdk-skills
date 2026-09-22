@@ -38,8 +38,7 @@ that should pull it in.
 There is no scaffold to copy - the boilerplate is two frontmatter lines, and the part that is
 actually hard to write well is the `description`. Crib from the shipped skill,
 `skills/zoowork-managed-agents/SKILL.md`: its description enumerates the identifiers, environment
-variables, and error strings that should pull the skill in, and ends by naming what the skill does
-NOT cover, so a near-miss request does not load it.
+variables, and concrete tasks that should pull the skill in.
 
 A new skill directory also has to be listed in the `skills` array in
 `.claude-plugin/marketplace.json`, or it does not ship with the plugin.

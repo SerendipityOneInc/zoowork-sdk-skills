@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "zoowork-agents",
-      "description": "Build on the ZooWork Managed Agents API and TypeScript SDK: create and configure agents, run sessions, stream events, upload and install agent skills, and schedule autonomous runs",
+      "description": "Build on the ZooWork Managed Agents API and official TypeScript/Python SDKs: create and configure agents, run sessions, stream events, upload and install agent skills, and schedule autonomous runs",
       "source": "./",
       "strict": false,
       "skills": [

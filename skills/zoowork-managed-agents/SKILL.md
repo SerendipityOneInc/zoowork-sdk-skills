@@ -1,417 +1,203 @@
 ---
 name: zoowork-managed-agents
-description: Build on ZooWork Managed Agents - hosted AI agents driven through the `@zoowork-ai/sdk` TypeScript SDK or `zoowork` Python SDK. Use this skill whenever ZooWork is mentioned; on any `zct_` key, `agt_` or `skl_` id, `ZOOWORK_API_KEY`, `ZOOWORK_BASE_URL`, `@zoowork-ai/sdk`, `createZooworkClient`, `create_zoowork_client`, `waitUntilRunning`, `wait_until_running`, `putAgentSkill`, model lifecycle, deleted Session tombstones, global Skill opt-out, Agent timezone, usage or billing, custom tools, filtered Session cursors, MCP context or permissions, channel binding for Feishu/Lark or DingTalk, or the ZooWork App Kit; on the errors `agent_not_running`, `model_not_selectable`, `environment_locked`, `session_archived`, `exec_requires_agent_scope`, or `environment_not_ready`; and when someone wants a ZooWork agent they built locally, with its skills, hosted somewhere it can serve real users. Read it before writing any ZooWork call - code that merely looks right here can pass local checks and fail at runtime.
+description: Build on ZooWork Managed Agents through the `@zoowork-ai/sdk` TypeScript SDK or `zoowork` Python SDK. Use whenever ZooWork, the ZooWork App Kit, a `zct_`, `agt_`, or `skl_` identifier, `ZOOWORK_API_KEY`, a ZooWork Agent or Session, streaming events, custom tools, MCP, platform Skills, Environments, channels, schedules, approvals, or ZooWork API errors are mentioned. Inspect the installed SDK version and read the routed reference before writing ZooWork code.
 license: MIT
 ---
 
 # Building on ZooWork Managed Agents
 
-**The four that break code which compiles. If you read nothing else here, read these.**
+Start with the user's task, then read only the reference that owns it. The public API is a
+Developer Preview, so inspect the installed SDK before relying on a remembered signature.
 
-1. `createAgent` leaves the agent **stopped**. Call `startAgent(id)` then `waitUntilRunning(id)`, or
-   every session call answers `409 agent_not_running`.
-2. Every session method takes **`agentId` first**: `createSession(agentId, ...)`,
-   `postEvents(agentId, sessionId, ...)`, `streamEvents(agentId, sessionId, ...)`.
-3. Reply text comes from `agent.assistant` via **`assistantText(ev)`** - never from `chat.delta`,
-   which is snapshot-replace and never reaches you anyway.
-4. The stream **does not close at turn end**. `break` on `isRunFinished(ev)` or you block until the
-   server's idle timeout.
+## Four invariants
 
-ZooWork hosts the agent loop and the sandbox its tools run in. You create an agent (a persistent,
-versioned configuration), start it, then open sessions against it and read a durable event stream.
-Your code owns the product; the platform owns the loop, the container, and the transcript. The API
-is a Developer Preview: shapes can change within a version, and the reference files mark which
-surfaces have been exercised against a live deployment and which have not.
+These are the most common reasons code compiles but fails at runtime:
 
-Decide two things before writing code: **which path** the user is on (below), and **whether what
-they want actually exists here** (`references/not-supported.md` - check it before designing, not
-after the first integration test).
+1. `createAgent` creates a stopped Agent. Call `startAgent(id)` and wait for `desired_state` before
+   opening a Session.
+2. Every Session method takes `agentId` first.
+3. Assistant text comes from `agent.assistant` through `assistantText()` / `assistant_text()`.
+4. A Session stream does not close at turn end. Break on `run.finished` through
+   `isRunFinished()` / `is_run_finished()`.
 
-## Before you start
+## Preflight
 
-**Choose the official package for the user's language.** TypeScript is `@zoowork-ai/sdk`, not
-`@zoowork/sdk` or `@zoowork-agents/sdk`. Python is `zoowork`, imported with
-`from zoowork import create_zoowork_client`. Both clients are asynchronous; the Python client is
-built on `httpx` and keeps API payload fields in their wire spelling.
+Before writing code:
 
-**The key.** One credential authenticates everything: an organization service token that starts with
-`zct_`, passed as `apiKey`. It authenticates the whole organization with full read and write over
-every agent in it, so it belongs on a server the user controls and never in a browser bundle, a
-mobile app, or a build-time inlined variable.
+1. Read `package.json`, `pyproject.toml`, lockfiles, and existing imports.
+2. Determine whether the project uses `@zoowork-ai/sdk` or `zoowork`, and record its installed
+   version. Do not upgrade it unless the user asks.
+3. Check whether `ZOOWORK_API_KEY` and `ZOOWORK_BASE_URL` are present without printing their values.
+4. Reuse the project's existing client and configuration style.
+5. Read the routed reference below. For an exact method or type, verify the installed declarations
+   or Python source as the final authority.
 
-```bash
-export ZOOWORK_API_KEY='zct_...'
-```
+If no project is present, state which package and runtime the example assumes. TypeScript requires
+Node.js 20+; Python requires Python 3.10+; the App Kit requires Node.js 22+.
 
-**No key yet? Walk the user through getting one.** Keys are self-served in the ZooWork App:
+## Route by task
 
-1. First check what they have: is `ZOOWORK_API_KEY` set? If a key exists, `listModels()` is the
-   cheapest proof it works - it touches no agent and creates nothing. A `401` with
-   `service_token.invalid` means the key is wrong or revoked, not that the route moved - treat it
-   the same as no key and continue here.
-2. If there is no key, send them to
-   **<https://zoowork.ai/identity?tab=account-api-keys>**
-   (in the App: **Settings → API Keys → Create API Key**). Tell them to name it after where it
-   will live (`staging-backend`, not `test`), and to copy the secret immediately - **it is shown
-   exactly once** and cannot be retrieved again. Have them put it in `ZOOWORK_API_KEY` (or their
-   `.env`) themselves and say when it's saved - **the key should not be pasted into the chat**.
-3. Who can do this: on a personal organization, anyone; on an enterprise organization the tab
-   requires the **admin** role. If they cannot see the tab, the next step is asking their org
-   admin for a key, not hunting for another endpoint - there is none, and key management has no
-   API on purpose.
-4. Once they say the key is saved, re-run the `listModels()` check before writing any other
-   code. If it still fails, send them back to the same page - do not start debugging the SDK.
+| User intent | Read before acting |
+|---|---|
+| TypeScript method, option, return shape, Agent config, model, MCP, permission, Environment, channel, schedule, approval, artifact, `exec`, or `wake` | `references/typescript-sdk.md` |
+| Python import, snake_case method, return shape, event helper, custom tool, Session cursor, Agent config, MCP, or channel | `references/python-sdk.md` |
+| Stream replies, reconnect, render events or tool calls, read/export history, or write Session events | `references/events-and-streaming.md` |
+| Host an Agent built locally, upload its Skills, deploy one Agent per user, or keep one Skill synchronized across a fleet | `references/deploy-your-agent.md` — follow it in order |
+| Usage, billing, credentials, webhooks, memory, file attachment, repository mount, worker queues, cross-Agent Session listing, rollback, or another uncertain capability | `references/not-supported.md` — check before designing |
 
-A leaked or lost key is handled on the same App page: **Rotate** kills the old secret immediately
-and shows a new one once. Never echo the key back in code, logs, or chat.
+Read more than one reference only when the request genuinely crosses those boundaries. For example,
+a basic streaming chat needs the language reference plus events; it does not need the deployment or
+capability-boundary documents.
 
-## Which path
+## Choose the path
 
-| The user has | Give them | Why |
-|---|---|---|
-| A key, and wants a working agent UI today | **ZooWork App Kit** - clone, paste the key, three commands | A deployable chat app with auth, persistence, streaming, and reconnect already solved |
-| Their own front end, or an agent design of their own | **The SDK, directly** | Full control; you write the integration around sessions and events |
-| An agent they built locally that has nowhere to run | **The SDK** - see `references/deploy-your-agent.md` | Their persona and skills become a hosted agent; their UI keeps talking to their own backend |
+| The user has | Give them |
+|---|---|
+| No API key or no running Agent | The setup flow below |
+| A key and wants a working Agent chat UI | ZooWork App Kit |
+| Their own backend, UI, or Agent design | The official SDK |
+| A local persona and Skills that need hosted execution | `references/deploy-your-agent.md` |
 
-### The App Kit path
+The App Kit is the `app-kit/` template in
+<https://github.com/SerendipityOneInc/zoowork-quickstarts>. Read its current README before changing
+it; do not reconstruct its setup from memory.
 
-The App Kit is the `app-kit/` template inside
-`https://github.com/SerendipityOneInc/zoowork-quickstarts`, a Cloudflare Workers chat application
-that already consumes this SDK. It provisions an agent on first use, so the user needs no `agt_` id.
+## API key onboarding
 
-```bash
-cd app-kit                        # the kit is one template in that repo, not its root
-cp .dev.vars.example .dev.vars    # paste the zct_ key into ZOOWORK_API_KEY
-pnpm install
-pnpm db:migrate:local
-pnpm dev                          # UI on http://127.0.0.1:4000
-```
+One organization credential starts with `zct_`. It has broad read/write access, so it belongs on a
+backend the user controls, never in browser code, a mobile app, logs, shell arguments, screenshots,
+or chat.
 
-Node 22 or later (the App Kit's floor; the SDK itself needs only Node 20). `ZOOWORK_API_KEY` is the
-only value to fill in. Before shipping it to real users, two things must change: set
-`AGENT_PICKER=off`, and put Cloudflare Access in front of the Worker
-(`CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD`) instead of the local `DEV_EMAIL` shortcut, which trusts
-whoever connects. When someone asks to customize the App Kit rather than call the API, read its
-README first - the answer is usually a file it already has.
+If the user has no key, send them to:
 
----
+<https://zoowork.ai/identity?tab=account-api-keys>
 
-## The mandatory flow
+The secret is shown once. Ask the user to save it in `ZOOWORK_API_KEY` themselves. Once saved,
+`listModels()` / `list_models()` is the cheapest read-only proof that the key and endpoint work. A
+`401 service_token.invalid` means the key is wrong or revoked; it is not evidence that the SDK route
+moved.
 
-| Step | Call | Frequency |
-|---|---|---|
-| 1 | `createAgent(...)` then `startAgent(id)` | **Once.** At setup, or in a provisioning path guarded by an idempotency key. Store the `agent_id` |
-| 2 | `createSession(agentId, ...)` | **Every conversation.** |
-| 3 | `postEvents(...)` / `streamEvents(...)` | **Every turn.** |
+## Minimal lifecycle
 
-An agent is a stored object, not a per-request construct. If you are about to write `createAgent()`
-in the same function that answers a user message - stop. Creating one per request makes a new agent,
-with its own workspace and sandbox, on every call. It belongs in setup, and the id belongs in the
-user's database.
+Use this order:
+
+1. List models and select a row whose `selectable` value is not `false`.
+2. Create the Agent once with a stable idempotency key.
+3. Persist `agent_id`.
+4. Start the Agent and wait for `desired_state` with the SDK helper.
+5. Create one Session per conversation.
+6. Post later turns into the same Session and resume streaming from the last processed cursor.
+
+Do not create an Agent inside the function that answers every user message. Each Agent owns a
+persistent workspace and sandbox.
 
 ```ts
 import {
-  createZooworkClient,
   assistantText,
+  createZooworkClient,
   isRunFinished,
   runOutcome,
 } from '@zoowork-ai/sdk'
 
-// Reads ZOOWORK_API_KEY. Throws at construction if no key resolves, rather than 401-ing later.
 const zc = createZooworkClient()
-
-// 1. Ask which models this deployment carries. A recalled id is a 400, not a fallback.
 const models = await zc.listModels()
-const model = models.find(
-  (m) => m.model === 'litellm/gpt-5.6-terra' && m.selectable !== false,
-)?.model
-if (!model) throw new Error('choose an explicit model returned by listModels()')
+const model = models.find((row) => row.selectable !== false)?.model
+if (!model) throw new Error('No selectable ZooWork model')
 
-// 2. Create. Ownership comes from your API key - the SDK handles it, nothing to pass.
 const created = await zc.createAgent(
-  {
-    resource: {
-      name: 'support-agent',
-      model: { primary: model },
-      userTimezone: 'Asia/Shanghai', // IANA name; does not set Schedule timezone
-      // persona.docs is an ARRAY of documents, not a filename-keyed object.
-      persona: { docs: [{ name: 'AGENTS.md', content: 'You answer questions about our billing policy.' }] },
-    },
-  },
-  // A stable idempotency key, not a per-run uuid. Two agents means two sandboxes and two
-  // workspaces, and nothing in the product cleans the spare one up.
+  { resource: { name: 'support-agent', model: { primary: model } } },
   'support-agent-v1',
 )
-const agentId = created.agent_id // agt_... - persist this, it is the handle for everything below
-
-// 3. Start, and wait on desired_state. Without this, the next step is a 409.
+const agentId = created.agent_id
 await zc.startAgent(agentId)
 await zc.waitUntilRunning(agentId)
 
-// 4. A session per conversation; the first message rides along with the create.
 const session = await zc.createSession(agentId, {
-  initial_events: [{ type: 'user.message', content: 'What is our refund window?' }],
+  initial_events: [{ type: 'user.message', content: 'Hello' }],
 })
 
-// 5. Stream until the turn ends. The stream is session-scoped and does NOT close at turn end -
-//    break yourself or you block until the server's idle timeout.
-let reply = ''
-let cursor: string | undefined // each event's resume token; persist the last one you saw
-for await (const ev of zc.streamEvents(agentId, session.session_id)) {
-  cursor = ev.cursor ?? cursor
-  reply += assistantText(ev) // '' for every event that is not agent.assistant
-  if (isRunFinished(ev)) {
-    if (runOutcome(ev) !== 'succeeded') throw new Error(`run ${runOutcome(ev)}`)
+let cursor: string | undefined
+for await (const event of zc.streamEvents(agentId, session.session_id)) {
+  cursor = event.cursor ?? cursor
+  process.stdout.write(assistantText(event))
+  if (isRunFinished(event)) {
+    if (runOutcome(event) !== 'succeeded') throw new Error(`run ${runOutcome(event)}`)
     break
   }
 }
 ```
 
-Later turns in the same session post onto it and stream again from where you stopped:
+For Python, use the same lifecycle with `create_zoowork_client`, `list_models`, `create_agent`,
+`start_agent`, `wait_until_running`, `create_session`, `stream_events`, `assistant_text`, and
+`is_run_finished`. Read `references/python-sdk.md` before writing the exact call shapes; nested
+payloads retain public wire spelling where documented.
 
-```ts
-await zc.postEvents(agentId, session.session_id, [{ type: 'user.message', content: 'And for annual plans?' }])
+## Session and event rules
 
-for await (const ev of zc.streamEvents(agentId, session.session_id, cursor ? { cursor } : {})) {
-  cursor = ev.cursor ?? cursor
-  reply += assistantText(ev)
-  if (isRunFinished(ev)) break // required every time: the stream does not end on its own
-}
-```
+- The event log contains user inputs, assistant replies, tool activity, and run completion.
+- Resume with each event's opaque `cursor`; do not derive it from `seq`.
+- Checkpoint only after processing the event. Cursor resume does not make application side effects
+  exactly-once.
+- `listEvents()` returns one page and drops pagination metadata. Use `listAllEvents()` for the full
+  history or `listEventsPage()` for explicit cursor pagination.
+- `toolCall().phase` is `start`, `end`, or `blocked`. A blocked call has not run.
+- A failed tool call does not necessarily fail the run. `runOutcome()` is the authority.
+- Retried writes should use a stable `idempotency_key`.
+- A valid `user.interrupt` with no active run can return `accepted: false`; that is a normal no-op.
+- `actor: { ref }` selects memory attribution. It is not authentication, authorization, or sandbox
+  isolation; derive it from authenticated backend state.
 
-The Python flow is the same, with snake_case method and helper names:
+Application-executed custom tools pause the current run until the user's backend resolves them.
+They are not MCP tools and not a worker-registration API. Read both the language reference and the
+events reference before implementing recovery.
 
-```python
-from zoowork import assistant_text, create_zoowork_client, is_run_finished
+## Platform Skills
 
-async with create_zoowork_client() as client:
-    models = await client.list_models()
-    model = next((m["model"] for m in models if m.get("selectable") is not False), None)
-    if model is None:
-        raise RuntimeError("no selectable ZooWork model")
-    created = await client.create_agent(
-        {
-            "name": "support-agent",
-            "model": {"primary": model},
-            "userTimezone": "Asia/Shanghai",
-        },
-        idempotency_key="support-agent-v1",
-    )
-    agent_id = created["agent_id"]
-    await client.start_agent(agent_id)
-    await client.wait_until_running(agent_id)
-    session = await client.create_session(
-        agent_id,
-        {"initial_events": [{"type": "user.message", "content": "Hello"}]},
-    )
-    async for event in client.stream_events(agent_id, session["session_id"]):
-        print(assistant_text(event), end="")
-        if is_run_finished(event):
-            break
-```
+A ZooWork platform Skill is attached to a running Agent. It is different from this coding-agent
+skill, which teaches a developer's assistant how to call ZooWork.
 
----
+- A Skill zip has one top-level directory whose name matches the `name` in `SKILL.md` frontmatter.
+- Upload scope is `org` or `personal`; `global` cannot be uploaded or installed with an API key.
+- New Agents receive global Skills by default. Use `include_global_skills: false` or an explicit
+  empty Skill list at create time to opt out.
+- The frontmatter `description` is the trigger. Upload and attachment can succeed while a vague
+  description causes the Skill never to load.
+- Prove use with a real turn whose wording should trigger the Skill. Do not claim success from
+  attachment state alone.
 
-## Events (quick reference)
+Follow `references/deploy-your-agent.md` for packaging, versioning, attachment verification,
+per-user isolation, scheduling, UI wiring, and teardown.
 
-Enough to write a correct read loop; `references/events-and-streaming.md` has the vocabulary, the
-history-reading path, and the reconnect pattern.
+## Capability and evidence boundary
 
-- **The event log is the whole conversation.** Your own inputs echo back as `user.message` (and
-  friends) alongside the agent's output, so a message list renders from this one surface - no
-  client-side copy of what you sent is needed. An input event's `processedAt` is `null` while
-  queued and a timestamp once the agent has consumed it.
-- **Read events through the helpers, not by hand.** Default REST and SSE both use snake_case;
-  legacy SSE can be camelCase. No shape carries a top-level `type`. Everything the SDK returns is
-  already normalized to `{ seq, eventType, payload, runId?, turn?, createdAt?, id?, processedAt?,
-  cursor? }`. Use `assistantText`, `messageText`, `thinkingText`, `toolCall`, `isRunFinished`,
-  `runOutcome` rather than reaching into `payload` yourself.
-- **Resume with each event's `cursor` token.** Remember the last one you saw. Reconnect with
-  `streamEvents(agentId, sessionId, { cursor })`. Treat the token as opaque; the public gateway
-  does not forward `Last-Event-ID`. Checkpoint after processing; cursor resume does not make your
-  application's side effects exactly-once.
-  (`{ after: seq }` still works but selects the deprecated engine-only lane - old stored cursors
-  only.) **The SDK does not reconnect for you** - it opens one request and the generator ends when
-  the server closes on idle. Looping over that is the caller's job.
-- **A run can succeed with failed tool calls.** `toolCall(ev).isError === true` does not fail the
-  run. Only `runOutcome(ev)` decides.
-- **`toolCall(ev).phase` has three values**, not two: `start`, `end`, and `blocked`. A `blocked` call
-  is waiting on an approval and has **not** run. Treating it as `end` reports work that never
-  happened.
-- **`listEvents()` returns one page and drops the page's pagination fields.** Default 100, hard
-  cap 500. Use `listAllEvents()` for history - it follows the server's cursor to the end - or
-  `listEventsPage()` when paging by hand (same call, keeps `hasMore`/`nextCursor`).
+“The SDK has no helper” and “the platform has no public contract” are different claims. Before
+saying a feature is absent, inspect the installed SDK, public docs, and `references/not-supported.md`.
 
-## Writing into a session
+Use these evidence labels:
 
-Only five event types can be written: `user.message`, `user.interrupt`, `user.tool_confirmation`,
-`user.custom_tool_result`, and `system.message`.
+- **Live-verified:** exercised against a named deployment.
+- **Source-reviewed:** confirmed in public SDK source or declarations.
+- **Offline-tested:** covered by fixtures or unit tests without a live tenant.
+- **Unknown:** evidence is insufficient; do not invent a method or route.
 
-`system.message` is worth knowing about - it injects context the model reads on its next turn
-without appearing as a user turn. It is the supported way to hand an agent state your own
-application owns (the current user's plan, what they just clicked) since there is no memory resource
-to write to.
-
-Source-reviewed: `user.message` (including `initial_events`) accepts `actor: { ref }`.
-Choose a stable opaque end-user reference from authenticated backend state; metadata alone does
-not select the actor. This is attribution, not authentication or session/file access isolation.
-See `references/events-and-streaming.md` for validation and IM restrictions.
-
-Invalid event types or bodies reject with HTTP 400; catch the error. This differs from a valid
-202 response containing `accepted: false`. Do not treat a batch as an atomic transaction.
-
-`user.interrupt` cancels an in-flight run. With no run in flight it answers `accepted: false`, which
-is a normal reply and not an error.
-
-Give each event an `idempotency_key` (any stable string): a `postEvents` retried after a timeout
-then converges instead of delivering the message twice. Accepted events come back as the full event
-object the history will show (with its `seq`); an unaccepted interrupt stays a plain receipt.
-
-## Application-executed custom tools
-
-Declare up to 32 tools under `resource.custom_tools` when your application should execute a call
-while the current run waits. Each declaration has `name`, `description`, an object
-`input_schema`, and optional `timeoutMs`. Read `agent.custom_tool_use` with `customToolUse()` or
-`custom_tool_use()`, then return 1–16 text, JSON, or base64 image blocks with
-`resolveCustomToolCall()` / `resolve_custom_tool_call()`. Recover pending work after a process
-restart with `listCustomToolCalls({ status: 'pending' })` or
-`list_custom_tool_calls(status="pending")`.
-
-The Session-event alternative is `user.custom_tool_result`, identified by
-`custom_tool_use_id` or `call_id`; give it a stable `idempotency_key` when retrying. While a run
-waits, `run_status` is `awaiting_approval`, so inspect `pending_custom_tool_calls` instead of
-assuming every wait is a human approval. A REST result receipt with `signaled: true` can remain
-pending until the run consumes it. This contract is source-reviewed and offline-tested, not live
-deployment-verified. Read the language-specific SDK reference before implementing it.
-
-## Listing Sessions
-
-Keep the legacy methods for numeric paging: `listSessions(agentId, { page })` and
-`list_sessions(agent_id, page=...)`. For filters and resumable scans, use `listSessionPage()` or
-`list_session_page()`. The SDK selects the cursor lane with initial cursor `sls1:0`; preserve the
-same channel, surface, runtime-mode, archive, and deleted filters for every continuation. Cursors
-are opaque and bound to the Agent and filter scope. Each row has `list_cursor`; the page has
-`next_cursor`.
-
-Deleted Sessions are omitted by default. Reconciliation jobs can set `includeDeleted: true` or
-`include_deleted=True`; tombstone rows carry `deleted: true`, and the page confirms the mode with
-`includes_deleted: true`. A tombstone identifies an id that was deleted; it is not a readable
-Session resource.
-
-## Skills (quick reference)
-
-A ZooWork skill is a capability attached to an **agent** - a `SKILL.md` plus its files, synced into
-the agent's sandbox and read by the model when it judges the skill relevant. There is no
-session-level skill list and no API to invoke one; attaching it changes what the agent knows, not
-what you can call.
-
-Four things surprise everyone:
-
-- **Built-in skills that call platform services (speech, video, connectors) need zero setup** -
-  the platform injects the credentials they use into the sandbox when it is created. Those env
-  vars are platform-internal: a skill you write must not read them (no compatibility promise).
-  Anything secret in your own skill belongs on your own service, called over the network.
-- **A brand-new agent already has the global catalog attached** (document skills like `docx`,
-  `pptx`, `xlsx`, `pdf` among them). You do not install those, and `putAgentSkill()` against a
-  `global` entry answers **404** - it is already attached, you just cannot control it. Do not retry
-  that 404 and do not write a provisioning step that installs what it found in the catalog. When
-  the Agent should not receive automatic global Skills, create or update it with
-  `include_global_skills: false`; an explicit `skills: []` at create also opts out. Explicitly
-  installed Skills remain available, and the opt-out persists across later updates and rerenders.
-- **The zip's top-level directory name must equal the `name` in `SKILL.md`'s frontmatter.** This is
-  the single most common first failure. `uploadSkill()` takes the zip plus a required
-  `{ scope: 'org' | 'personal' }`; `global` is refused on upload.
-- **The frontmatter `description` is the trigger; the body is the payload.** The model decides
-  whether to load a skill by reading the description ALONE - the body is read afterwards, and only
-  if the description won. Write it as *when to use this*, containing the words a user would
-  actually say, not as *what this is*. This is the one failure here that reports success at every
-  step: the upload succeeds, `putAgentSkill()` succeeds, `listAgentSkills()` returns the row with
-  `eligible: true` and a real `basePath`, and the skill still never fires. When a user says their
-  skill "does nothing", check the description before anything else.
-
-  ```yaml
-  description: Notes about our office coffee bar.                    # never fires
-  description: Use whenever the user asks about the office coffee     # fires
-    menu, coffee prices, or wants to order a coffee - including the
-    words latte, espresso, or americano.
-  ```
-
-Uploading a local skill directory and attaching it is the core of
-`references/deploy-your-agent.md` - read it when the user has skills of their own.
-
-## Usage and billing
-
-Managed Agents has no public Usage API through the SDKs or HTTP API, and this skill does not
-currently document a public usage-page URL. Do not invent a client method, console URL, or internal
-service route; read `references/not-supported.md` when an application asks to fetch usage
-programmatically.
-
----
-
-## Reading guide
-
-| The user wants to | Read |
-|---|---|
-| A TypeScript signature, return shape, or method you are not certain exists | `references/typescript-sdk.md` |
-| A Python import, snake_case signature, return shape, event helper, or method | `references/python-sdk.md` |
-| Cron schedules (including the `payload.outcome` gate), running a command in the sandbox (`exec`), `wake`, environments, approvals, artifacts, the system prompt, MCP policy/context, or channels (including Feishu and DingTalk) | `references/typescript-sdk.md` - these surfaces appear **nowhere else in this skill**, and each has a trap worth a debugging session (schedule reads and writes speak different vocabularies; `exec` needs an agent-scope sandbox; artifact routes need selectors the SDK derives for you) |
-| To consume the stream, read history, reconnect, or render tool calls | `references/events-and-streaming.md` |
-| To host an agent they built locally, with its skills - or to run an agent per end user and keep one skill updating the whole fleet | `references/deploy-your-agent.md` - **follow it in order, do not summarize it** |
-| Something you suspect is not supported (usage API, worker queues, vaults, webhooks, file uploads, approvals, memory) | `references/not-supported.md` - **read before designing**, each entry names the real alternative |
-
-For anything none of those cover, use the shipped TypeScript `dist/index.d.ts` or Python source
-and type annotations as the authority. Developer documentation is at
-`https://github.com/SerendipityOneInc/zoowork-agents-docs`. Prefer those over recalling a shape.
+Do not run live, billable, or tenant-mutating calls merely to answer a design question.
 
 ## Common pitfalls
 
-- **Do not poll `actual_state`.** It is a best-effort chat-channel health projection, not API
-  readiness. Unsupported route-status can project `active` with zero channel counts; a transient
-  query failure can remain `activating`, and list/GET may briefly differ. `running` is not one of
-  its values. `waitUntilRunning()` polls `desired_state` and throws `408`/`'timeout'` on a spent
-  budget.
-- **A model catalog row is not necessarily selectable.** Filter for `selectable !== false` in
-  TypeScript or `row.get("selectable") is not False` in Python before provisioning. A draining or
-  retired row may remain visible for an existing Agent; selecting it for a new config returns
-  `409 model_not_selectable`. Refresh the catalog and use `expired_fallback_to` when supplied.
-- **Custom tools and MCP tools have different execution owners.** A custom tool parks the run while
-  your application executes and resolves it. MCP runs on a remote server called by the platform.
-  Neither is a general worker-registration or background-queue API.
-- **MCP exposure, context, and permission are separate.** `exposure` controls when tools enter the
-  model context. `context.meta` / `context.headers` opt runtime identifiers into tool calls; those
-  identifiers are not authentication. `permission` is the server default and `tools` overrides
-  exact native tool names (no wildcards, 64 maximum). Omission keeps default-allow behavior, and
-  an allow-always decision on the server wildcard covers all of that server's tools for the
-  Session. The end-to-end approval loop remains unverified.
-- **Tool-policy wildcard syntax is narrow.** Use an exact name, global `*`, or one trailing
-  `prefix*`. Other `*` placements match nothing. `alsoAllow` stays exact-only.
-- **There is no credential API.** The platform seeds model credentials itself at create, and there
-  is no store for your end users' secrets — those belong on your own service.
-- **An Environment choice locks permanently** on first sandbox creation. `stopAgent()` does not
-  release it, and a later change answers `409 environment_locked`. Decide before the agent's first
-  turn or not at all.
-- **`createAgent` and `getAgent` return different shapes.** Create hands back a flat receipt with a
-  top-level `config_version`; reads return a projection with the config under `declared` and the
-  version at `status.config_version`. Reading the wrong one yields `undefined`, and `undefined ===
-  undefined` makes a no-op check pass when it should not.
-- **`config_version` is not an optimistic-concurrency token.** Every `PUT` bumps it, including one
-  that changes nothing, and so does attaching or detaching a skill. A version that moved does not
-  tell you your own section changed, so drift detection built on it does not work.
-- **Match errors on `ZooworkError.status` and `.type`, never on the message.** There are two error
-  vocabularies, because there are two envelopes: the sessions family answers bare codes
-  (`agent_not_running`, `session_archived`), the agents family answers dotted ones
-  (`service_api.not_found`). Both land on the same class. No error-code constants are exported -
-  compare string literals, and prefer `status` when you only need the class of failure.
-- **A cross-tenant or unknown id is `404`, not `403`.** So a 404 does not mean deleted. Keep your own
-  record of the ids you create.
-- **Start/stop warnings are not the only failure mode.** HTTP and transport failures throw;
-  stop can fail after desired state changes. Read back before retrying uncertain writes.
-- **`deleteAgent()` does not clean up after itself.** It leaves the agent's schedules in place and
-  they keep firing. Stop the agent, delete its schedules yourself, then delete it.
-- **`exec(agentId, args)` takes argv, not a shell string.** Use `['bash', '-lc', 'ls /workspace']`
-  for shell semantics. A non-zero exit is still HTTP 200 - the promise resolves, so check
-  `exit_code` yourself.
-- **Do not mix SDK naming conventions.** TypeScript uses `createZooworkClient`, `listSessionPage`,
-  and `event.eventType`; Python uses `create_zoowork_client`, `list_session_page`, and
-  `event.event_type`. Python payload dictionaries still preserve wire keys such as `custom_tools`
-  and `timeoutMs`.
+- Wait on `desired_state`, never `actual_state`; the latter is a chat-channel health projection.
+- An Environment locks on first sandbox creation. Stopping the Agent does not release it.
+- `createAgent` and `getAgent` return different shapes.
+- `config_version` is not an optimistic-concurrency token.
+- MCP exposure, runtime context, and permission policy are separate controls.
+- Tool-policy wildcards allow an exact name, global `*`, or one trailing `prefix*` only.
+- There is no public credential store for an end user's secret.
+- Match `ZooworkError.status` and `.type`, not message text.
+- A cross-tenant or unknown identifier can return 404 rather than 403.
+- `exec(agentId, args)` takes argv. A non-zero process exit can still be HTTP 200.
+- Deleting an Agent does not delete its schedules. Remove schedules before deleting a throwaway
+  Agent.
+- Do not mix TypeScript camelCase with Python snake_case. Treat identifiers, cursors, and unknown
+  response fields as opaque.
+
+Public developer documentation is at
+<https://github.com/SerendipityOneInc/zoowork-agents-docs>.
