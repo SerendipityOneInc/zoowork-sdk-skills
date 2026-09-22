@@ -24,11 +24,11 @@ or public HTTP endpoint and display them in your own product.
 
 **What actually happens.** Managed Agents currently exposes no public Usage API through either SDK
 or the HTTP API. Do not infer one from an internal service route or invent `getUsage()` /
-`get_usage()`. Users can view API usage and costs on the ZooWork Platform Usage page:
-<https://platform.zoowork.ai/settings/usage>.
+`get_usage()`. There is currently no public usage-page URL documented here.
 
-**What to do instead.** Link users to that Platform page. If the product requires programmatic
-export, treat it as an unsupported requirement until ZooWork publishes a public contract.
+**What to do instead.** Explain that this is not currently available through a documented public
+surface. If the product requires programmatic export, treat it as an unsupported requirement until
+ZooWork publishes a public contract.
 
 ---
 

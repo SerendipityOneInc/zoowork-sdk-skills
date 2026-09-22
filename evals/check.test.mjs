@@ -79,7 +79,7 @@ test('Python SDK tripwires keep snake_case custom-tool and cursor methods', () =
   `).status, 0)
 })
 
-test('lifecycle and Platform boundary tripwire rejects unsafe model and invented Usage APIs', () => {
+test('lifecycle and usage boundary tripwire rejects unsafe model and invented Usage APIs', () => {
   assert.equal(check(17, `
     const model = (await zc.listModels())[0].model
     const usage = await zc.getUsage()
@@ -99,6 +99,6 @@ test('lifecycle and Platform boundary tripwire rejects unsafe model and invented
       for (const session of page.sessions) if (session.deleted) reconcile(session.session_id)
       cursor = page.next_cursor ?? undefined
     } while (cursor)
-    // View usage and cost at https://platform.zoowork.ai/settings/usage
+    // No public Usage API or public usage-page URL is currently documented.
   `).status, 0)
 })
