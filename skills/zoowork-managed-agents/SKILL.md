@@ -50,7 +50,7 @@ export ZOOWORK_API_KEY='zct_...'
    `service_token.invalid` means the key is wrong or revoked, not that the route moved - treat it
    the same as no key and continue here.
 2. If there is no key, send them to
-   **<https://zoowork.ai/claw-settings?tab=account-api-keys>**
+   **<https://zoowork.ai/identity?tab=account-api-keys>**
    (in the App: **Settings → API Keys → Create API Key**). Tell them to name it after where it
    will live (`staging-backend`, not `test`), and to copy the secret immediately - **it is shown
    exactly once** and cannot be retrieved again. Have them put it in `ZOOWORK_API_KEY` (or their
@@ -341,10 +341,10 @@ Uploading a local skill directory and attaching it is the core of
 
 ## Usage and billing
 
-Direct users to <https://platform.zoowork.ai/settings/usage> for API usage and costs. Managed
-Agents has no public Usage API through the SDKs or HTTP API. Do not invent a client method or
-document an internal service route; read `references/not-supported.md` when an application asks
-to fetch usage programmatically.
+Managed Agents has no public Usage API through the SDKs or HTTP API, and this skill does not
+currently document a public usage-page URL. Do not invent a client method, console URL, or internal
+service route; read `references/not-supported.md` when an application asks to fetch usage
+programmatically.
 
 ---
 
