@@ -2,10 +2,9 @@
 
 Skills that teach AI coding assistants how to build on [ZooWork Managed Agents](https://github.com/SerendipityOneInc/zoowork-agents-docs).
 
-Install one of these into Claude Code, Cursor, or any other assistant that reads
-[Agent Skills](https://github.com/anthropics/skills), and it will know the shape of the API before
-it writes the first line: which calls exist, which do not, and the handful of places where code that
-looks right fails at runtime.
+Install this skill into Claude Code, Cursor, or any other assistant that reads
+[Agent Skills](https://github.com/anthropics/skills). It routes each task to the relevant reference
+before the assistant writes code, so the full API contract does not occupy context unnecessarily.
 
 ## Install
 
@@ -35,7 +34,7 @@ platform, so it earns its keep in *your* project.
 
 | Skill | What it gives an assistant |
 |---|---|
-| [`zoowork-managed-agents`](skills/zoowork-managed-agents/SKILL.md) | How to create and configure agents, run sessions, consume the event stream, upload and attach skills, schedule autonomous runs - and which capabilities are absent, with the real alternative for each |
+| [`zoowork-managed-agents`](skills/zoowork-managed-agents/SKILL.md) | A task-first entrypoint for Agent setup and configuration, Sessions and events, platform Skills, deployment, and public capability boundaries; detailed contracts are loaded from references only when needed |
 
 `zoowork-managed-agents` covers both official SDKs: TypeScript package `@zoowork-ai/sdk` and
 Python package `zoowork`. It keeps their camelCase and snake_case method names separate while
