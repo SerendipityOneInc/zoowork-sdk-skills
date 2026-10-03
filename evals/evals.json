@@ -88,8 +88,8 @@
     {
       "id": 2,
       "name": "host-a-locally-built-agent",
-      "prompt": "I built a deck-editing assistant locally with Claude Code. It's a system prompt in AGENTS.md plus two skill folders (slide-layout/ and chart-builder/, each with a SKILL.md). My front end is fine, I host that myself - what I don't have is anywhere for the agent and its skills to actually run. I have a ZooWork key. Set this up for me. I use a Platform Project key. Explain which deployment steps are supported and do not invent a root ZIP upload workflow.",
-      "expected_output": "Persona instructions, catalog Skill selection and Session text task inputs with a clear Project-key capability boundary.",
+      "prompt": "I built a deck-editing assistant locally with Claude Code. It has AGENTS.md plus slide-layout/ and chart-builder/, each with SKILL.md and resources. My UI is hosted separately. Show me how to deploy the Agent and these Skills with a named ZooWork Platform Project key. I have not checked server support yet, and my installed TypeScript uploadSkill only accepts org or personal. Give me a safe implementation plan and upload example; do not execute any API requests.",
+      "expected_output": "Persona setup and Project-scope ZIP publishing with explicit deployment verification, a compatible HTTP fallback, separate Agent binding and runtime verification.",
       "files": [],
       "assertions": [
         {
@@ -118,19 +118,11 @@
           ]
         },
         {
-          "name": "identifies root Skill registry unavailability",
+          "name": "attaches registered Skills to the Agent",
           "kind": "present",
           "patterns": [
-            "root.{0,40}(Skill|skill|registry)",
-            "(upload|ZIP).{0,60}(unavailable|cannot|not available)"
-          ]
-        },
-        {
-          "name": "provides Session inputs or catalog selection",
-          "kind": "present",
-          "patterns": [
-            "user\\.message",
-            "catalog"
+            "putAgentSkill\\s*\\(",
+            "put_agent_skill\\s*\\("
           ]
         },
         {
@@ -140,6 +132,36 @@
             "\\b(?:getWorkspaceFile(?:Content)?|writeWorkspaceFile|get_workspace_file(?:_content)?|write_workspace_file)\\s*\\(",
             "/agents/[^\\s\\x60\"\\']+/files",
             "/files(?:/content)?(?:\\?|[\\x60\"\\'])"
+          ]
+        },
+        {
+          "name": "uses Project scope in the upload request",
+          "kind": "present",
+          "patterns": [
+            "scope\\s*[=:]\\s*[\\x22\\x27]?project",
+            "\\.\\s*(?:append|set)\\(\\s*[\"']scope[\"']\\s*,\\s*[\"']project[\"']"
+          ]
+        },
+        {
+          "name": "uses a compatible multipart upload",
+          "kind": "present",
+          "patterns": [
+            "files\\[\\]"
+          ]
+        },
+        {
+          "name": "separates server deployment support from SDK typing",
+          "kind": "present",
+          "patterns": [
+            "([Vv]erify|[Cc]heck|[Cc]onfirm)[^\\n]{0,100}(deployment|server)",
+            "([Dd]eployment|[Ss]erver)[^\\n]{0,100}(verify|check|confirm)"
+          ]
+        },
+        {
+          "name": "does not force an unsupported SDK scope cast",
+          "kind": "absent",
+          "patterns": [
+            "scope:\\s*'project'\\s+as\\s+(?:any|unknown)"
           ]
         }
       ]
@@ -344,8 +366,8 @@
     {
       "id": 8,
       "name": "interval-and-skill-version-contracts",
-      "prompt": "Write TypeScript snippets with a Platform Project key to create a ZooWork schedule every 60 seconds with a stable ID and inspect an optional linked session from a run. Can this key upload a new version of our Skill ZIP? Explain the capability boundary.",
-      "expected_output": "everyMs schedule, optional session association, and clear root Skill registry unavailability.",
+      "prompt": "Write TypeScript snippets with a named ZooWork Platform Project key to create a schedule every 60 seconds with a stable ID and inspect an optional linked Session from a run. Our deployment has Project-key Skill registry support. We own a project-scoped Skill and also see an org-scoped Skill in the catalog. Show how to publish a new ZIP version of our Skill and explain whether this key can modify the org Skill. Do not execute API requests.",
+      "expected_output": "everyMs schedule, optional Session association, version publishing on the existing Skill ID and read/write scope separation.",
       "files": [],
       "assertions": [
         {
@@ -371,11 +393,18 @@
           ]
         },
         {
-          "name": "identifies root registry restriction",
+          "name": "publishes a version on an existing Skill",
           "kind": "present",
           "patterns": [
-            "(root|Project).{0,100}(registry|upload)",
-            "(upload|ZIP).{0,100}(cannot|unavailable|not available)"
+            "uploadSkillVersion\\s*\\("
+          ]
+        },
+        {
+          "name": "distinguishes org visibility from write access",
+          "kind": "present",
+          "patterns": [
+            "([Cc]annot|[Cc]an.t|[Nn]ot allowed|[Rr]ead.only)[^\\n]{0,100}(org|organization)",
+            "([Oo]rg|[Oo]rganization)[^\\n]{0,100}(cannot|can.t|not allowed|read.only)"
           ]
         }
       ]

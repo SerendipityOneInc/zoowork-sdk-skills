@@ -221,8 +221,11 @@ not authentication. `permission` sets `always_ask` or `always_allow` for the ser
 overrides exact native tool names, with no wildcard and a maximum of 64 entries. Tool-policy
 selectors separately support an exact name, global `*`, or one trailing `prefix*`.
 
-Project keys cannot bind Channels or administer root Skills and Environments; these routes
-return `404 service_api.not_found`. Use `list_agent_skills` to inspect attached catalog Skills.
+Project keys cannot bind Channels or administer root Environments. Skill registry publishing
+is a separate, source-reviewed contract: named Project keys upload with `scope="project"`;
+Default Project keys use `scope="org"`. `upload_skill` accepts a string scope. Read
+[Skill registry](./skill-registry.md) for packaging, deployment verification, write permissions
+and version publishing. Use `list_agent_skills` to inspect resolved attached Skills.
 Read `developer-api.md` for text task inputs, file outputs, Database availability, Usage, Run Output,
 action detail/paging and Agent webhook management. Check installed source before using new methods.
 

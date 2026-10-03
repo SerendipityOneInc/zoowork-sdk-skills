@@ -34,7 +34,7 @@ when the optional key argument is truthy for core creates. Webhook create, rotat
 and redelivery require a stable explicit key.
 Sending a header is not an exactly-once guarantee. Source-reviewed creation contracts use HTTP
 keys for Agent and Session; schedules converge on stable IDs and identical definitions;
-Project keys do not administer the root Skill registry.
+Skill uploads carry the key but do not guarantee replay; see [Skill registry](./skill-registry.md).
 `postEvents` uses an `idempotency_key` inside each event body instead.
 
 ## Models
@@ -340,8 +340,14 @@ wrong-Agent, 409 stopped-workflow and 501 unavailable-signaling cases are source
 
 Use `listAgentSkills(agentId)` to inspect resolved attached Skills. `resource.skills` accepts
 `{ name: 'catalog-skill' }` or `{ skill_id: 'skl_...' }`, optionally with a version. Automatic
-global Skills are enabled unless explicitly opted out. Project keys cannot upload or administer
-root Skill registry records. Workspace file writes do not register a Skill.
+global Skills are enabled unless explicitly opted out.
+
+See [Skill registry](./skill-registry.md) for the source-reviewed Project-key upload contract:
+named Project keys write `project` scope; Default Project keys write `org` scope. Check the
+deployment separately. Older SDK declarations restrict `uploadSkill` to `org | personal`;
+use `uploadSkill(zip, { scope: 'project' })` only when the installed declaration accepts it.
+Otherwise use the documented multipart HTTP request. Do not substitute `personal` or suppress the type error.
+Workspace file writes do not register a Skill.
 
 ## Exec and wake
 

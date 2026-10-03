@@ -47,6 +47,7 @@ older release, say so and ask before upgrading.
 | Text task inputs, file outputs, Database availability, Usage, webhook registration/verification/delivery diagnostics, Run Output, or action paging/detail | `references/developer-api.md` |
 | Stream replies, reconnect, render events or tool calls, read/export history, or write Session events | `references/events-and-streaming.md` |
 | Host an Agent built locally, select its Skills, deploy one Agent per user, or keep one Skill synchronized across a fleet | `references/deploy-your-agent.md` — follow it in order |
+| Upload, version, list, or delete a platform Skill ZIP | `references/skill-registry.md` — check deployment support and the key's write scope |
 | Credentials, binary file attachment, repository mount, worker queues, cross-Agent Session listing, rollback, or another uncertain capability | `references/not-supported.md` — check before designing |
 
 Read more than one reference only when the request genuinely crosses those boundaries. For example,
@@ -166,12 +167,14 @@ skill, which teaches a developer's assistant how to call ZooWork.
   empty Skill list to opt out.
 - Create bindings accept catalog `name` or `skill_id`; inspect `listAgentSkills` / `list_agent_skills`
   to see the resolved assignment.
-- Project keys cannot manage the root Skill registry, root Environments, or Channels. An SDK
-  method's existence does not grant those capabilities.
+- The source-reviewed Skill registry contract permits named Project keys to write `project`
+  Skills and Default Project keys to write `org` Skills. Read `references/skill-registry.md`
+  for upload, versioning, write permissions, SDK compatibility, and deployment verification.
+- Project keys do not administer root Environments or Channels. These are separate capabilities.
 - Use `persona.docs` for standing instructions and Session messages for text task inputs.
   Ask the Agent to create and publish output, then download it through the Artifact API.
   Read `references/developer-api.md` for this flow. A workspace file is not a registered Skill.
-  Do not promise a ZIP registry workflow.
+  Skill ZIP publishing has its own registry flow; it is not general binary task input upload.
 - Prove runtime behavior with an authorized real turn; attachment state alone does not prove use.
 
 Follow `references/deploy-your-agent.md` for packaging, versioning, attachment verification,
