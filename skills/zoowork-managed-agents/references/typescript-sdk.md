@@ -1,15 +1,8 @@
 # TypeScript SDK surface
 
-All 65 methods on `ZooworkClient`, grouped by area, signatures exactly as `src/client.ts` declares
-them. The package is `@zoowork-ai/sdk` - ESM only (no CJS `require` condition, no subpath
-exports), zero runtime dependencies, `engines.node >= 20`, shipping `dist/index.d.ts`, which is the
-authority over anything here. `SKILL.md` has the mandatory flow; this file is for looking up a
-signature, a return shape, or whether a method exists.
-
-Fourteen runtime values are exported and a test pins the list, so an import outside it fails:
-`createZooworkClient`, `DEFAULT_BASE_URL`, `ZooworkError`, `SESSION_EVENT_TYPES`, `normalizeEvent`,
-`isRunFinished`, `runOutcome`, `messageText`, `assistantText`, `thinkingText`, `customToolUse`, `toolCall`,
-`parseSSE`, `PUBLIC_INPUT_EVENT_TYPES`. Everything else is a `type`, and there are no error-code constants - see Errors.
+Client methods are grouped below. The installed package's `dist/index.d.ts` is the authority
+for availability and signatures. Read `developer-api.md` for Files, Database, Usage, Run Output,
+action paging and signed webhook helpers, including release checks and HTTP fallback.
 
 ## Client construction
 
@@ -19,7 +12,7 @@ createZooworkClient(cfg: ZooworkConfig = {}): ZooworkClient   // cfg itself is o
 interface ZooworkConfig {
   apiKey?: string    // falls back to ZOOWORK_API_KEY; an empty ENV VAR counts as unset, an explicit apiKey: '' does not
   baseUrl?: string   // falls back to ZOOWORK_BASE_URL, then DEFAULT_BASE_URL (production) - leave unset unless pointing at a different deployment; trailing slashes stripped
-  auth?: ZooworkAuth // { serviceToken } is deployment-internal, not available to API-key callers
+  auth?: ZooworkAuth // advanced existing client configuration; prefer apiKey
   fetch?: (input: string, init?: RequestInit) => Promise<Response>  // for edge runtimes and tests
 }
 
@@ -27,8 +20,8 @@ export type ZooworkAuth = { serviceToken: string } | { apiKey: string }
 export const DEFAULT_BASE_URL = 'https://clawapi.ecap.gsmo.ai/service/v1'
 ```
 
-**The SDK reads exactly two environment variables: `ZOOWORK_API_KEY` and `ZOOWORK_BASE_URL`** -
-nothing else appears anywhere in the source. There is no `ZOOWORK_ORG_ID`: the gateway derives the
+Client configuration reads `ZOOWORK_API_KEY` and `ZOOWORK_BASE_URL`. Webhook verification also
+reads `ZOOWORK_WEBHOOK_SECRET`. There is no `ZOOWORK_ORG_ID`: the gateway derives the
 tenant from the key, so an org id in your environment is dead configuration. Construction **throws a
 plain `Error`, not a `ZooworkError`**, when no key resolves - a missing key is a setup mistake, and
 failing loudly here beats a 401 on whatever call runs first, but it does mean a `catch` narrowing on
@@ -37,11 +30,11 @@ truthiness, so an explicit `apiKey: ''` - which is what `process.env.KEY ?? ''` 
 past it and builds a client that sends an empty bearer and 401s on the first call. Only the
 environment-variable path maps `''` to unset. `DEFAULT_BASE_URL` already includes the `/service/v1`
 version prefix; appending another `/v1` 404s every call. An `Idempotency-Key` header is sent only
-when the optional key argument is truthy (`createAgent`, `createSession`, `createSchedule`,
- `createEnvironment`, `createEnvironmentVersion`, `uploadSkill`, `uploadSkillVersion`).
+when the optional key argument is truthy for core creates. Webhook create, rotation, test
+and redelivery require a stable explicit key.
 Sending a header is not an exactly-once guarantee. Source-reviewed creation contracts use HTTP
-keys for Agent, Session and Environment; schedules converge on stable IDs and identical definitions;
-skill creation rejects duplicate names with 409; skill versions deduplicate content.
+keys for Agent and Session; schedules converge on stable IDs and identical definitions;
+Project keys do not administer the root Skill registry.
 `postEvents` uses an `idempotency_key` inside each event body instead.
 
 ## Models
@@ -70,7 +63,7 @@ A stored, versioned configuration. Create once, keep the `agent_id`, reference b
 createAgent(input: { resource: AgentResource; ownership?: Ownership }, idempotencyKey?: string): Promise<AgentRecord>
 listAgents(opts?: AgentListParams): AgentPagePromise
 getAgent(agentId: string): Promise<AgentRecord>
-updateAgent(agentId: string, sections: Record<string, unknown>): Promise<AgentRecord>  // per-section PUT; bumps config_version on every call
+updateAgent(agentId: string, sections: Record<string, unknown>): Promise<AgentRecord>  // per-section PUT; ownership-only changes do not bump config_version; supports expected_config_version
 deleteAgent(agentId: string): Promise<void>                     // 204; does NOT remove the agent's schedules - delete those yourself first
 startAgent(agentId: string): Promise<{ warnings: string[] }>    // successful warnings are informational; non-2xx still throws
 stopAgent(agentId: string): Promise<{ warnings: string[] }>     // does not clear environment_locked, does not remove schedules
@@ -88,9 +81,9 @@ receipt and the read projection are different documents under one `AgentRecord` 
 
 Read the version across both as `agent.status?.config_version ?? agent.config_version`. One alone is
 `undefined` on the other path, and `undefined === undefined` makes a "nothing changed" check pass
-when it should not. It is no optimistic-concurrency token either: every PUT bumps it including a
-no-op one, and so does attaching or detaching a skill - so a version that moved does not tell you
-your own section changed.
+when it should not. Send `expected_config_version` to atomically check the active version on update; a mismatch
+is `409 active_config_changed`. Configuration writes can increment it even with identical values,
+while ownership-only changes do not. Read your declared section to reconcile uncertain writes.
 
 **`updateAgent` merges per section.** `sections` is the declared config keyed by section, so sending
 only `model` leaves `persona`, `labels`, `mcp` and the rest untouched. Plain-object sections shallow-merge one level: updating
@@ -155,12 +148,9 @@ the agent answers your first message directly. Ownership is likewise handled for
 derives it from your API key, and `createAgent`'s `ownership` input is only for gateway-less
 engine access.
 
-**`listAgents` scope is `owner_uid` AND `org_id`**, both injected from your key, so an agent a
-colleague created in the same org is fetchable by `getAgent(id)` and never appears in the list. An
-empty list is therefore not proof the agent does not exist, and a provisioning path reasoning "not
-in the list, therefore create one" mints duplicates alongside it. `labels` filters on declared
-labels, sent as `label.<key>=<value>` parameters - the way to resolve your own external id back to
-an agent. Page size is fixed at 100 by the API.
+`listAgents` applies the key's Project and applicable owner visibility. Reading by ID also
+rechecks authorization; a colleague's Agent is not automatically accessible. Treat foreign and
+unknown IDs returning 404 identically.
 
 **Agent list pagination is version-sensitive.** Check the installed SDK's declarations before
 using this shape. The implementation in [SDK PR #26](https://github.com/SerendipityOneInc/zoowork-sdk-typescript/pull/26)
@@ -229,121 +219,8 @@ after an uncertain failure and reconcile. Soft deletion is not resource cleanup.
 
 ## Channels
 
-Bind Feishu/Lark, Slack, WeCom, WeChat and DingTalk to an agent. Existing SDK evidence covers the
-first four and generic QR methods on 2026-08-28. DingTalk direct binding is source-reviewed, not
-deployment-verified; older deployments can return 404 for this family.
-
-| Platform | Explicit `addChannel` config | Guided QR setup |
-|---|---|---|
-| `feishu` | `{ appId, appSecret, domain }` | `startChannelSetup(id, 'feishu', opts)`; Feishu aliases remain |
-| `slack` | `{ botToken, appToken }` | No guided SDK flow; obtain app tokens separately |
-| `wecom` | `{ botId, secret }` | `startChannelSetup(id, 'wecom', opts)` |
-| `weixin` / `wechat` | Refused with `400 channel.weixin_setup_required` | Use `'weixin'` for setup |
-| `dingtalk-connector` | `{ clientId, clientSecret }`, with `dm_policy: 'open'` | No public guided setup route |
-
-```ts
-listChannels(agentId): Promise<AgentChannel[]>                       // [] for a pure API agent
-addChannel(agentId, { platform, account?, display_name?, dm_policy?, group_policy?, allow_from?, config?, permission_admin_enabled? }): Promise<AgentChannel>
-updateChannel(agentId, platform, { account?, dm_policy?, group_policy?, enabled?, permission_admin_enabled? }?): Promise<AgentChannel>
-removeChannel(agentId, platform, { account? }?): Promise<void>       // account defaults to 'default'
-
-startChannelSetup(agentId, platform: GuidedSetupPlatform, input?: ChannelSetupInput): Promise<ChannelSetupSession>
-pollChannelSetup(agentId, platform: GuidedSetupPlatform, sessionId): Promise<ChannelPollResult>
-cancelChannelSetup(agentId, platform: GuidedSetupPlatform, sessionId): Promise<void>
-waitForChannelSetup(agentId, platform: GuidedSetupPlatform, sessionId, { timeoutMs?, signal?, onPoll? }?): Promise<ChannelPollResult>
-
-startFeishuSetup(agentId, { brand?, account?, dm_policy?, group_policy?, permission_admin_enabled? }?): Promise<FeishuSetupSession>
-pollFeishuSetup(agentId, sessionId): Promise<ChannelPollResult>
-cancelFeishuSetup(agentId, sessionId): Promise<void>
-waitForFeishuSetup(agentId, sessionId, { timeoutMs?, signal?, onPoll? }?): Promise<ChannelPollResult>
-```
-
-For generic setup, `GuidedSetupPlatform` is `'feishu' | 'wecom' | 'weixin'`.
-Feishu returns `verification_uri_complete`; WeCom and WeChat return `qrcode_url`.
-WeChat may return an inline `data:image/…` payload: render that as an image, not a QR-encoded URL.
-Only Feishu reads `brand`; Feishu and WeCom read `account` and group policy. WeChat reads
-`dm_policy` (`open` or `disabled`) and fixes account/group policy server-side.
-Bound the wait using `timeoutMs: setup.expires_in * 1000` and an AbortSignal. Terminal body
-statuses are returned; HTTP failures, removed setup sessions, timeout and cancellation throw.
-
-The Feishu QR device flow: `startFeishuSetup` answers `{ session_id, verification_uri_complete,
-expires_in, poll_interval }`. **The caller owns the UI** - render `verification_uri_complete`
-(usually as a QR code), then let `waitForFeishuSetup` drive the poll loop:
-
-```ts
-const setup = await zc.startFeishuSetup(agentId)
-renderQr(setup.verification_uri_complete)
-const done = await zc.waitForFeishuSetup(agentId, setup.session_id, {
-  timeoutMs: setup.expires_in * 1000,
-})
-if (done.status !== 'success') report(done.status) // 'expired' | 'denied' | 'error'
-```
-
-`waitForFeishuSetup` returns terminal statuses the server reports in the BODY
-(`success | expired | denied | error`) instead of throwing - a rejection is an outcome. Treat
-unknown statuses as still-in-flight. Observed defaults: `expires_in: 600`, `poll_interval: 5`.
-`brand: 'lark'` really switches the URI host to `open.larksuite.com`, and must match the
-workspace the person approves it in. The non-QR path is `addChannel` with the platform app's
-own credentials in `config` (platform-specific keys, passed through). `allow_from` is retained for SDK compatibility but ignored by the public gateway.
-Source-reviewed: effective policy comes from `dm_policy`; this is not an enforced sender
-allowlist. Do not use it as an authorization boundary.
-
-Feishu add, update and guided setup accept `permission_admin_enabled`. Channel responses may carry
-`capabilities.feishu_documents`: `permission_admin_enabled`, sync state (`pending`, `applied`,
-`retry`, `error`), provider state (`ready`, `degraded`), `missing_scopes`, and optional
-`approval_state: 'pending_admin'`. These fields are source-reviewed, not deployment-verified.
-Enabling the request field is not proof that document operations are ready; read the projection.
-
-Channel constraints (recorded observations unless marked source-reviewed):
-
-- **`account` names the binding, and the name is unique per USER across every agent.** One
-  active binding per (owner, platform, account), so taking `feishu`/`default` on one agent
-  takes it from all the others. Format is `^[a-z0-9][a-z0-9_-]{0,63}$` plus three reserved
-  words (`__proto__`, `prototype`, `constructor`), and nothing is normalized - capitals or
-  spaces are a `400`, not a cleanup. `'default'` is very likely already held by a binding the
-  same login made in the app, which the server refuses to adopt: `409 channel.conflict`.
-  `listChannels` is agent-scoped, so the SDK cannot pre-check a name - track your own. On the
-  QR path the clash lands AFTER someone has scanned, leaving a freshly registered Feishu app
-  behind in their workspace.
-
-- **WeChat is QR-only.** Use `startChannelSetup(agentId, 'weixin')`, then the generic poll/wait
-  methods. Passing `weixin` or `wechat` to `addChannel` still fails.
-
-- **DingTalk is direct-config only in the public API.** Use `platform: 'dingtalk-connector'`,
-  `{ clientId, clientSecret }`, and `dm_policy: 'open'`. Do not send it to guided setup.
-
-- **`addChannel`'s `201` means STORED, not WORKING.** Credentials are NOT validated at bind
-  time: deliberately bogus ones returned `201` with `health:'unknown'`/`status:'configured'`,
-  then listed moments later as `health:'unhealthy'`/`status:'error'`. Never report success
-  off the create call - read `health`/`status` from a follow-up `listChannels`.
-- **A setup session can stop existing, and then polling 404s** with
-  `channel.feishu_session_not_found` instead of reporting a terminal status. Confirmed after
-  `cancelFeishuSetup`; whether natural expiry takes this path or reports `'expired'` is
-  UNOBSERVED. `waitForFeishuSetup` throws there - so a caller needs a `catch`, not just a
-  status switch.
-- **Three distinct 404 codes.** `channel.feishu_session_not_found` (QR session gone, start a
-  new one), `channel.not_found` (agent has no binding on that platform),
-  `service_api.not_found` (unknown agent, or unknown action). Match the `code`, not the status.
-- **A chat conversation and an API session are separate sessions with separate context.**
-  This is context separation, not access isolation. Source-reviewed public reads use organization
-  authorization; a session's channel does not hide it from an org key. Your backend must authorize
-  each end user. IM sessions reject caller-supplied `actor`.
-- **`actual_state` remains only a best-effort channel-health projection after binding** - it may
-  report that channel's connectivity, but it is still not an API-readiness signal; keep gating on
-  `desired_state`.
-
-`addChannel` is idempotent but **not** an upsert: an identical body for the same
-`platform`+`account` answers 201 again and replays the binding you already have, while the same
-pair with a **changed** `config` answers `409 channel.conflict`. Rotating credentials therefore
-means `removeChannel` then `addChannel` - a plain re-add fails.
-
-`removeChannel` is **idempotent** (removing an absent binding is `200 {ok:true}`) while
-`updateChannel` is **not** (`404 channel.not_found`) - that asymmetry decides whether your
-cleanup path needs a `catch`. `dm_policy:'pairing'` is rejected with
-`400 channel.pairing_unsupported`. `updateChannel` returns the channel in its new state, and
-`enabled:false` also moves `status` to `'disabled'` and resets `health`. `deleteAgent`
-best-effort disables the agent's channels; a cleanup failure never turns the delete into an
-error, so unbind explicitly when a binding must die.
+Project keys cannot bind or administer Channels: these routes return `404 service_api.not_found`.
+Do not build Channel onboarding with a Project key. Use API Sessions and your own application UI.
 
 ## Sessions
 
@@ -353,7 +230,7 @@ One conversation. Every session method takes `agentId` first, because the route 
 ```ts
 createSession(
   agentId: string,
-  input: { initial_events?: OutboundEvent[]; metadata?: Record<string, unknown> },  // input is required, both fields optional
+  input: { initial_events?: OutboundEvent[]; metadata?: Record<string, unknown>; runtime_mode?: 'active'; idle_compaction?: boolean | null },  // input is required, both fields optional
                                                                                     // initial_events: only ONE user.message has been sent here - the type is wider than what is verified
   idempotencyKey?: string,
 ): Promise<SessionRecord>                                                          // 409 agent_not_running unless desired_state is running
@@ -454,59 +331,10 @@ is source-reviewed and offline-tested, not live deployment-verified.
 
 ## Skills
 
-Two families: the **registry** owns skill packages org-wide, the **per-agent** methods attach one to
-an agent. Attaching changes what the agent knows; there is no API to invoke a skill.
-
-```ts
-// registry
-uploadSkill(
-  zip: Blob | ArrayBuffer | Uint8Array,
-  opts: { scope: 'org' | 'personal'; fileName?: string; description?: string; idempotencyKey?: string },  // opts is REQUIRED: scope is mandatory
-): Promise<SkillRecord>
-uploadSkillVersion(
-  skillId: string,
-  zip: Blob | ArrayBuffer | Uint8Array,
-  opts?: { fileName?: string; description?: string; idempotencyKey?: string },
-): Promise<SkillVersionRecord>
-listSkills(opts?: { scope?: 'org' | 'personal' | 'global' | string; q?: string; page?: number }): Promise<SkillRecord[]>
-deleteSkill(skillId: string): Promise<void>   // 204, no in-use guard: agents holding it just lose it
-
-// per agent
-listAgentSkills(agentId: string, opts?: { verbose?: boolean }): Promise<AgentSkill[]>  // verbose includes ineligible/excluded entries
-putAgentSkill(agentId: string, skillId: string, opts?: { enabled?: boolean; versionPin?: number | null }): Promise<{ config_version?: number; warnings?: string[] }>
-deleteAgentSkill(agentId: string, skillId: string): Promise<void>
-```
-
-`uploadSkill`'s `opts` is not optional because `scope` is mandatory, and it may only be `org` or
-`personal` - other values are rejected by the public gateway with 400 (source-reviewed). This is the only path by which an API-key caller adds a skill an agent will load. **The zip's
-single top-level directory name must equal the `name` in `SKILL.md`'s frontmatter** (compared case-
-and underscore-insensitively), or the upload is a 400 reading like
-`top-level directory 'my-test-skill' must match SKILL.md name 'market-research'`. So
-`zip -r skill.zip market-research/` where `market-research/SKILL.md` declares
-`name: market-research`; a zip whose root is the skill (`SKILL.md` at the top) is also accepted.
-`SKILL.md` must be non-empty and declare both `name` and `description`. Limits: 50 MB expanded, zip
-only, encrypted zips rejected.
-
-Source-reviewed: root `uploadSkill` takes its description from ZIP frontmatter; options
-`description` is ignored on create. Duplicate scope/name creation returns 409, not an upsert.
-Read back after an uncertain create. Version upload deduplicates identical content, rather than
-relying on the HTTP idempotency header.
-
-`uploadSkillVersion` returns `SkillVersionRecord` with `skill_id`, `version: string | number`
-and `state`, not `SkillRecord.latest_version/status`. These fields require the corresponding
-SDK contract; their deployment behavior remains unverified here.
-
-`uploadSkillVersion` adds a version to an existing skill; the frontmatter `name` must match that
-skill's name, and `description` overrides the frontmatter one. **Agents that installed the skill
-unpinned follow the new version on their own** - the registry bumps their `config_version` - so a
-redeploy is one upload, not an upload plus a `putAgentSkill` sweep. Only an agent pinned with
-`versionPin` stays behind. `putAgentSkill` sends
-`{ enabled: opts.enabled ?? true, version_pin: opts.versionPin ?? null }`, so camelCase `versionPin`
-becomes snake_case on the wire and omitting `opts` means enabled and unpinned. Only skills your
-tenant owns are installable: a `global` catalog entry lists fine and answers **404** here, not worth
-retrying - a fresh agent already has the global catalog attached, you simply cannot control those
-entries. `SkillRecord.latest_version` came back as the string `"1"` from the multipart create while
-other surfaces spell it as a number; compare loosely.
+Use `listAgentSkills(agentId)` to inspect resolved attached Skills. `resource.skills` accepts
+`{ name: 'catalog-skill' }` or `{ skill_id: 'skl_...' }`, optionally with a version. Automatic
+global Skills are enabled unless explicitly opted out. Project keys cannot upload or administer
+root Skill registry records. Workspace file writes do not register a Skill.
 
 ## Exec and wake
 
@@ -546,18 +374,11 @@ triggerSchedule(agentId: string, scheduleId: string): Promise<{ schedule_name?: 
 listScheduleRuns(agentId: string, scheduleId: string, opts?: { limit?: number }): Promise<ScheduleRun[]>  // rows GROUPED BY source, not time-sorted; limit defaults 20, caps at 100
 ```
 
-**Which id to pass.** `ScheduleRecord.scheduleId` is the fully-qualified
-`cron/{computer_id}/{agent_id}/{schedule_id}`; the id you chose comes back as `name` on
-`getSchedule` **only**. A list row carries no `name` key at all - it puts your id at
-`memo.schedule_id`, and its `schedule_name` is that same fully-qualified string, not the short one.
-Every method above wants the short one - `record.scheduleId` builds a path with slashes in it and
-404s. **And three responses use three vocabularies:** `createSchedule`
-answers a snake_case receipt carrying only `schedule_name`, not the definition; `getSchedule`
-answers a camelCase projection; `listSchedules` answers the raw scheduler describe (`spec` / `state`
-/ `memo` / `next_action_times`) with that projection merged on top. Nothing comes back under the
-name you sent it: the cadence you wrote as `schedule` reads back as
-`scheduleSpec: { timezoneName, catchupWindowMs, cronExpressions[] }`, and
-`sessionTarget: 'isolated'` as `execution: { kind: 'isolated' }`.
+**Which id to pass.** Use the public `schedule_id` on create and read projections.
+Compatibility fields can include `name`, `memo.schedule_id` and a fully qualified `scheduleId`;
+do not pass a fully qualified path as the public id. Read the saved cadence from
+`scheduleSpec.cronExpressions[0]`, and preserve optional `session_id`, `run_id`, `linked_by`
+and trigger attribution when present. These fields do not prove a turn succeeded.
 
 **A `getSchedule` result is not a legal PUT body.** `updateSchedule` discards six fields before
 sending, and all six are fields a read hands you:
@@ -691,52 +512,10 @@ as a secret and re-mint with `downloadArtifact` rather than storing it long-term
 
 ## Environments
 
-A versioned sandbox image. Optional - a fresh agent is already pinned to a platform default - and
-the pin locks permanently on first sandbox creation.
-
-```ts
-listEnvironments(opts?: { page?: number }): Promise<EnvironmentRecord[]>   // 1-based; the platform default is not in here
-getEnvironment(environmentId: string): Promise<EnvironmentRecord>          // 404 outside your org, incl. the platform default
-createEnvironment(
-  input: { resource: EnvironmentResource; ownership: Ownership },
-  idempotencyKey?: string,
-): Promise<EnvironmentRecord>
-archiveEnvironment(environmentId: string): Promise<EnvironmentRecord>
-createEnvironmentVersion(
-  environmentId: string,
-  config: EnvironmentConfig,     // a bare config; the SDK wraps it as { resource: { config } }
-  idempotencyKey?: string,
-): Promise<EnvironmentVersionRecord>
-getEnvironmentVersion(environmentId: string, version: number, opts?: { resourceClass?: 'starter' | 'pro' | 'ultra' }): Promise<EnvironmentVersionRecord>
-
-// resource.config accepts EXACTLY these four keys; anything else is 400 invalid_environment_config,
-// which is why EnvironmentConfig has no index signature and a stray key is a compile error.
-interface EnvironmentConfig {
-  packages?: { apt?: string[]; npm?: string[]; pip?: string[] }   // install order is fixed apt -> npm -> pip
-  files?: { path?: string; contentBase64?: string; upload_id?: string; executable?: boolean }[]
-  build?: { script?: string; verify_script?: string }
-  networking?: { type: 'unrestricted' | 'limited'; allowed_hosts?: string[] }  // omitted means unrestricted
-}
-```
-
-Files land under `/opt/zooclaw/environment/`, and a top-level `bin/*` marked executable is linked
-into `/usr/local/bin`. No user-defined secrets, env vars, or start hooks (the platform injects
-its own runtime credentials for built-in skills; that layer is internal and not extensible). **Poll
-`getEnvironmentVersion` and read `status`, not `state`**: there is no `state` field on a version, so
-a loop written against one compares `undefined` to `'ready'` forever and never terminates. Source-reviewed aggregate states include `partial_ready`: some resource classes are ready,
-while others may still be building or already failed. It can be transient or a partial terminal
-result. Read a class with optional `resourceClass` and choose an explicit readiness policy.
-Bound the entire polling loop AND each request, accept cancellation, and stop on failure or
-timeout. Do not wait on partial readiness forever. Pin only a `ready` version, or `createAgent`
-answers `409 environment_not_ready`. On the Environment row, `latest_version` is the newest version
-**created** - `1` the instant you create an Environment, while that version is still `queued` - and
-`latest_ready_version` is the newest one that finished building, `null` until a build lands. **Pin
-`latest_ready_version`.** `archiveEnvironment` exists mainly to get one character right: the route
-is `POST /environments/{id}:archive`, and a raw `:` makes the engine miss the route and answer 404.
-The SDK sends `%3A` for you; from another language, encode it yourself. `createEnvironmentVersion`
-creates a new immutable configuration version using `{ resource: { config } }`, not a
-retry of a failed version. Retrying that same version is a separate operation.
-Builds and the resource-class query still need deployment verification.
+Platform supplies a managed Environment. Root Environment administration returns
+`404 service_api.not_found` for Project keys. No caller-supplied Environment build recipe is
+available through these credentials. Default compute is Pro: 4 CPU and 4096 MiB RAM.
+Persistent workspace storage has no documented fixed quota or retention SLA.
 
 ## Credentials
 
@@ -783,3 +562,7 @@ two errors never came from a server at all - `waitUntilRunning`'s `408 timeout` 
 `streamEvents` uses the same error parser on non-2xx open responses: JSON codes and request IDs
 are preserved when available. Non-JSON failures retain status and diagnostic fields. `retryable`
 is a hint, not permission to replay a write or proof the SDK retried it.
+
+MCP tool overrides accept `requireConfirmation?: boolean`. True requires `permission: 'always_ask'`
+and limits decisions to allow-once or deny; it prevents persistent grants from skipping confirmation.
+False or omission retains ordinary permission behavior.

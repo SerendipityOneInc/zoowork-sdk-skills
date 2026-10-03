@@ -1,6 +1,6 @@
 ---
 name: zoowork-managed-agents
-description: Build on ZooWork Managed Agents through the `@zoowork-ai/sdk` TypeScript SDK or `zoowork` Python SDK. Use whenever ZooWork, the ZooWork App Kit, a `zct_`, `agt_`, or `skl_` identifier, `ZOOWORK_API_KEY`, a ZooWork Agent or Session, streaming events, custom tools, MCP, platform Skills, Environments, channels, schedules, approvals, or ZooWork API errors are mentioned. Inspect the installed SDK version and read the routed reference before writing ZooWork code.
+description: Build on ZooWork Managed Agents through the `@zoowork-ai/sdk` TypeScript SDK or `zoowork` Python SDK. Use whenever ZooWork, the ZooWork App Kit, a `zwp_live_`, `agt_`, or `skl_` identifier, `ZOOWORK_API_KEY`, a ZooWork Agent or Session, streaming events, custom tools, MCP, platform Skills, Environments, channels, schedules, approvals, or ZooWork API errors are mentioned. Inspect the installed SDK version and read the routed reference before writing ZooWork code.
 license: MIT
 ---
 
@@ -41,9 +41,10 @@ Node.js 20+; Python requires Python 3.10+; the App Kit requires Node.js 22+.
 |---|---|
 | TypeScript method, option, return shape, Agent config, model, MCP, permission, Environment, channel, schedule, approval, artifact, `exec`, or `wake` | `references/typescript-sdk.md` |
 | Python import, snake_case method, return shape, event helper, custom tool, Session cursor, Agent config, MCP, or channel | `references/python-sdk.md` |
+| Files, read-only Database inspection, Usage, webhook registration/verification/delivery diagnostics, Run Output, or action paging/detail | `references/developer-api.md` |
 | Stream replies, reconnect, render events or tool calls, read/export history, or write Session events | `references/events-and-streaming.md` |
-| Host an Agent built locally, upload its Skills, deploy one Agent per user, or keep one Skill synchronized across a fleet | `references/deploy-your-agent.md` — follow it in order |
-| Usage, billing, credentials, webhooks, memory, file attachment, repository mount, worker queues, cross-Agent Session listing, rollback, or another uncertain capability | `references/not-supported.md` — check before designing |
+| Host an Agent built locally, select its Skills, deploy one Agent per user, or keep one Skill synchronized across a fleet | `references/deploy-your-agent.md` — follow it in order |
+| Credentials, binary file attachment, repository mount, worker queues, cross-Agent Session listing, rollback, or another uncertain capability | `references/not-supported.md` — check before designing |
 
 Read more than one reference only when the request genuinely crosses those boundaries. For example,
 a basic streaming chat needs the language reference plus events; it does not need the deployment or
@@ -64,18 +65,13 @@ it; do not reconstruct its setup from memory.
 
 ## API key onboarding
 
-One organization credential starts with `zct_`. It has broad read/write access, so it belongs on a
-backend the user controls, never in browser code, a mobile app, logs, shell arguments, screenshots,
-or chat.
+Create a Project API key at <https://platform.zoowork.ai>. Agent and Session access is scoped
+to the selected Project. The secret is shown once; have the user save it in `ZOOWORK_API_KEY`
+themselves. Keep it on their backend, outside browser/mobile code, logs and chat.
 
-If the user has no key, send them to:
-
-<https://zoowork.ai/identity?tab=account-api-keys>
-
-The secret is shown once. Ask the user to save it in `ZOOWORK_API_KEY` themselves. Once saved,
-`listModels()` / `list_models()` is the cheapest read-only proof that the key and endpoint work. A
-`401 service_token.invalid` means the key is wrong or revoked; it is not evidence that the SDK route
-moved.
+Initialize Organization billing and bind owner credentials. If the API requests rebinding,
+sign in to Platform and rebind the key. `listModels()` / `list_models()` is a cheap read-only
+credential check; it does not prove runtime readiness or authorize a billable test.
 
 ## Minimal lifecycle
 
@@ -156,14 +152,15 @@ events reference before implementing recovery.
 A ZooWork platform Skill is attached to a running Agent. It is different from this coding-agent
 skill, which teaches a developer's assistant how to call ZooWork.
 
-- A Skill zip has one top-level directory whose name matches the `name` in `SKILL.md` frontmatter.
-- Upload scope is `org` or `personal`; `global` cannot be uploaded or installed with an API key.
-- New Agents receive global Skills by default. Use `include_global_skills: false` or an explicit
-  empty Skill list at create time to opt out.
-- The frontmatter `description` is the trigger. Upload and attachment can succeed while a vague
-  description causes the Skill never to load.
-- Prove use with a real turn whose wording should trigger the Skill. Do not claim success from
-  attachment state alone.
+- New Agents receive global Skills by default. Set `include_global_skills: false` or an explicit
+  empty Skill list to opt out.
+- Create bindings accept catalog `name` or `skill_id`; inspect `listAgentSkills` / `list_agent_skills`
+  to see the resolved assignment.
+- Project keys cannot manage the root Skill registry, root Environments, or Channels. An SDK
+  method's existence does not grant those capabilities.
+- Use `persona.docs` for your own instructions and the Files helpers for workspace task inputs.
+  Writing a file is not a registered Skill upload. Do not promise a ZIP registry workflow.
+- Prove runtime behavior with an authorized real turn; attachment state alone does not prove use.
 
 Follow `references/deploy-your-agent.md` for packaging, versioning, attachment verification,
 per-user isolation, scheduling, UI wiring, and teardown.
@@ -171,7 +168,7 @@ per-user isolation, scheduling, UI wiring, and teardown.
 ## Capability and evidence boundary
 
 “The SDK has no helper” and “the platform has no public contract” are different claims. Before
-saying a feature is absent, inspect the installed SDK, public docs, and `references/not-supported.md`.
+saying a feature is absent, inspect the installed SDK, public docs, `references/developer-api.md`, and `references/not-supported.md`.
 
 Use these evidence labels:
 
@@ -185,9 +182,10 @@ Do not run live, billable, or tenant-mutating calls merely to answer a design qu
 ## Common pitfalls
 
 - Wait on `desired_state`, never `actual_state`; the latter is a chat-channel health projection.
-- An Environment locks on first sandbox creation. Stopping the Agent does not release it.
+- Platform uses a managed Environment. Project keys do not administer root Environments.
 - `createAgent` and `getAgent` return different shapes.
-- `config_version` is not an optimistic-concurrency token.
+- `updateAgent` accepts `expected_config_version` for atomic optimistic concurrency; stale
+  writes return `409 active_config_changed`. A version is not an idempotency receipt or rollback handle.
 - MCP exposure, runtime context, and permission policy are separate controls.
 - Tool-policy wildcards allow an exact name, global `*`, or one trailing `prefix*` only.
 - There is no public credential store for an end user's secret.

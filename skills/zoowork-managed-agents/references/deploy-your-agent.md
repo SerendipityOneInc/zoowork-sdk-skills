@@ -2,58 +2,38 @@
 
 You have a persona, one or more skill directories, and a front end you can host. What you do not
 have is somewhere for the agent loop and its skills to run. This file turns that into a hosted
-agent: one `agt_` id, its skills uploaded and attached, verified by a real turn, with your own
-backend in front of it.
+Agent with persona instructions, available catalog Skills and workspace inputs. Verify
+configuration, then run a real turn only when authorized; keep your backend in front of it.
 
 Run the steps in order, and perform each verification - several of these calls report success in
-ways that do not prove the effect landed. `putAgentSkill` returns a bumped `config_version` whether
-or not the skill resolved, `triggerSchedule` returns `triggered: true` for a schedule that was
-skipped, and `exec` returns HTTP 200 for a command that failed. Code is TypeScript against
-`@zoowork-ai/sdk`, ESM, Node 20 or later, top-level await, and every snippet assumes this
-preamble. Python users should keep the same sequence with snake_case calls from
-`references/python-sdk.md`.
-
-```ts
-import { readFile } from 'node:fs/promises'
-import { createZooworkClient, assistantText, isRunFinished, runOutcome, toolCall } from '@zoowork-ai/sdk'
-
-const zc = createZooworkClient() // reads ZOOWORK_API_KEY; throws at construction if unset
-```
-
----
+ways that do not prove the effect landed. Verify declared configuration and resolved Skills
+separately from runtime behavior.
 
 ## Step 0. Take stock
 
-Map what you have onto what ZooWork stores, before you write a call. Three of these rows are
-one-way doors.
+Map local inputs onto supported Platform resources before writing calls.
 
 | What you built locally | Where it goes | What to know |
 |---|---|---|
 | System prompt, persona file, `CLAUDE.md` / `AGENTS.md` | `resource.persona.docs[]` on `createAgent` | An array of `{ name, content }`, not a map. Editable later with `updateAgent` |
-| A skill directory containing `SKILL.md` | A zip, uploaded with `uploadSkill`, attached with `putAgentSkill` | Two calls, and the upload alone attaches nothing. Steps 4 and 5 |
+| A skill directory containing `SKILL.md` | Instructions in `persona.docs` and workspace task files | Project keys do not upload root Skill ZIPs. Steps 4 and 5 |
 | Custom tool / function definitions | `resource.custom_tools`; your application handles `agent.custom_tool_use` and resolves the call | Source-reviewed and offline-tested, not deployment-verified. Keep a pending-call recovery loop |
 | A local working directory of files | `/workspace` inside the agent's sandbox | With `sandbox.scope: 'agent'` there is one `/workspace` shared by every session, so it is agent state, not conversation state |
 | Your chat UI | Stays yours | It talks to your backend, never to ZooWork. Step 9 |
 | Per-end-user secrets or accounts | **Nowhere.** Vaults and credential APIs do not exist | `references/not-supported.md` - Credentials |
 
-Decide these at create time. Two of them cannot be undone:
-
-- **`sandbox.scope`** - `agent` gives one long-lived `/workspace` across all sessions and is
-  required by `exec`; `session` gives a fresh one per session. Pick `agent` for a deck editor
-  whose files should persist between conversations.
-- **The Environment** - optional, and a default is already pinned. The pin **freezes permanently**
-  the first time a sandbox is created (`agent.environment_locked` flips to `true`); stopping the
-  agent does not release it, and a later change is `409 environment_locked`. If you need custom
-  apt/npm/pip packages baked in, build and pin it on `createAgent`; otherwise ignore it forever.
+Choose `sandbox.scope` at create time. Agent scope is required by `exec`. Session scope creates
+separate sandbox instances, while the Agent workspace remains shared. Use an Agent per user
+when files must be isolated. Platform supplies its managed Environment; Project keys do not
+administer root Environment builds.
 
 ---
 
 ## Step 1. Choose a model from `listModels()`
 
-Model ids here are prefixed (`litellm/gpt-5.6-terra`), so a name recalled from another platform
+Select a model id from the live catalog, so a name recalled from another platform
 is a 400 rather than a fallback. Ask the server what exists. Omitting the model pins whatever
-platform default is current at create time; the source default is Terra now, but deployment
-catalogs can differ and defaults can rotate.
+platform default is current at create time; catalog defaults can rotate; select a returned, selectable model explicitly.
 
 ```ts
 const models = await zc.listModels()
@@ -113,10 +93,9 @@ skills, and a second id that half your traffic is now talking to. Nothing in the
 that up, and the two agents drift the moment either one writes a file. Know what the key does and
 does not buy you, though: the SDK forwards it as an `Idempotency-Key` header, while
 historical convergence evidence in this example does not cover every create family. Source-reviewed
-HTTP-key contracts cover Agent/Session/Environment; schedules use stable IDs and identical definitions. The `listAgents` lookup above is
-the part you can verify, and its one limit is scope - it queries `owner_uid AND org_id`, so an agent
-a colleague created with a different key will not appear and you would make a second one. On a
-shared deployment, store the id.
+HTTP-key contracts cover Agent and Session; schedules use stable IDs and identical definitions. The `listAgents` lookup above is
+the part you can verify, and its one limit is scope - the selected Project and applicable owner visibility limit results. Persist the Agent id
+in application storage so a key change does not cause accidental duplicate provisioning.
 
 **Verify:**
 
@@ -165,119 +144,19 @@ request as well as the gap between polls, and throws a `ZooworkError` with
 
 ---
 
-## Step 4. Package each skill directory as a zip
+## Step 4. Choose available Skills and supply task inputs
 
-**The zip's single top-level directory name must equal the `name` in that directory's `SKILL.md`
-frontmatter.** This is the first failure nearly everyone hits, and the error names both halves:
-`top-level directory 'deck-notes' must match SKILL.md name 'deck-review'`. The comparison is
-case- and underscore-insensitive, so `Deck_Review/` matching `deck-review` passes, but a directory
-you renamed to something else locally does not.
+New Agents receive global Skills by default. Choose catalog Skills by `name` or `skill_id`
+when creating the Agent and inspect `listAgentSkills(agentId)` afterwards. Project keys cannot
+upload root Skill ZIPs. Put custom instructions in `persona.docs`, and use
+`writeWorkspaceFile(agentId, '/workspace/input.txt', text)` for task input. A workspace file is
+not a registered Skill. Read `developer-api.md` and check installed SDK availability.
 
-```bash
-cd ~/projects/deck-editor/skills
-# Write the archive OUTSIDE the directory being zipped so it cannot include itself.
-zip -q -r -X ../deck-review.zip deck-review
-```
+## Step 5. Verify the declared configuration
 
-A zip whose root *is* the skill (`SKILL.md` at the top level, no wrapping directory) is also
-accepted. Limits: 50 MB expanded, zip only, store or deflate, encrypted archives rejected.
-
-The frontmatter has to satisfy the server too. `SKILL.md` must be non-empty and declare both `name`
-and `description`; keep `name` to lowercase letters, digits and hyphens (`^[a-z0-9-]{1,64}$` is the
-SKILL.md convention - the SDK pins only the non-empty and directory-match rules). The `description`
-is not decoration: it is what the agent matches on when deciding whether this skill is relevant to
-the message in front of it, so "Deck helper" gets the skill ignored forever. Write what it does and
-when to reach for it - "Reviews and edits PowerPoint decks: slide structure, speaker notes, template
-compliance. Use when the user mentions a deck, .pptx, or slides."
-
-```ts
-const zip = await readFile('/abs/path/deck-review.zip') // Buffer is a Uint8Array - accepted as-is
-
-const skill = await zc.uploadSkill(zip, {
-  scope: 'org',                      // 'org' | 'personal' only; other values are rejected with 400 (source-reviewed)
-  fileName: 'deck-review.zip',
-  idempotencyKey: 'deck-review-v1',
-})
-console.log(skill.skill_id, skill.name, skill.latest_version)
-```
-
-One call creates the skill row and version 1. It does **not** attach anything to any agent.
-
-**Verify:**
-
-```ts
-const found = await zc.listSkills({ q: 'deck-review' })
-const mine = found.filter((s) => s.scope === 'org' || s.scope === 'personal')
-if (mine.length !== 1) throw new Error(`expected 1 owned skill row, saw ${mine.length}`)
-if (Number(skill.latest_version) !== 1) throw new Error('version 1 was not created')
-```
-
-Two things this catches. `latest_version` comes back as the **string** `"1"` from the multipart
-create while other surfaces spell it as a number, so compare with `Number()`. Source-reviewed create behavior rejects an existing scope/name with 409 rather than upserting;
-`q` is a search, so inspect name and scope before choosing a row. After a timeout, reconcile with
-`listSkills({ q: name })` before uploading again. Set description in ZIP frontmatter: the root
-create path ignores the options description.
-
-Repeat per skill directory. The `global` catalog entries in `listSkills` (`docx`, `pptx`, `xlsx`,
-`pdf` and friends) are already attached to every agent and are not installable with an API key; do
-not write a provisioning step that tries.
-
----
-
-## Step 5. Attach, then prove the attachment resolved
-
-```ts
-const put = await zc.putAgentSkill(agentId, skill.skill_id) // { config_version, warnings }
-```
-
-`put.config_version` is not proof. Every `PUT` on the agent bumps the version, including one that
-changed nothing, and the gateway bumps it on its own besides - so a bumped version tells you a
-write happened, not that the skill resolved onto this agent. Read it back:
-
-```ts
-const attached = await zc.listAgentSkills(agentId)
-const row = attached.find((s) => s.skill_id === skill.skill_id)
-if (!row) throw new Error('skill did not resolve onto the agent')
-if (row.eligible === false) throw new Error(`attached but ineligible: ${JSON.stringify(row)}`)
-console.log(row.name, row.version, row.location) // e.g. deck-review 1 /skills/deck-review/SKILL.md
-```
-
-`row.location` is worth keeping: it is the path the skill materializes at inside the sandbox, and
-Step 6 uses it as the evidence that the model actually read the file. Call
-`listAgentSkills(agentId, { verbose: true })` when a skill is missing - verbose includes the
-ineligible and excluded entries, which is where the reason lives.
-
-**Pinning versus following latest.**
-
-| Call | Effect |
-|---|---|
-| `putAgentSkill(agentId, skillId)` | Attached, enabled, **unpinned** - follows the newest version |
-| `putAgentSkill(agentId, skillId, { versionPin: 3 })` | Frozen at version 3 until you change it |
-| `putAgentSkill(agentId, skillId, { versionPin: null })` | Back to following latest |
-| `putAgentSkill(agentId, skillId, { enabled: false })` | Attached but off, without detaching |
-| `deleteAgentSkill(agentId, skillId)` | Detached |
-
-Shipping an edit to a skill is therefore one call, not two:
-
-```ts
-const version = await zc.uploadSkillVersion(skill.skill_id, await readFile('/abs/path/deck-review.zip'), {
-  fileName: 'deck-review.zip',
-  idempotencyKey: 'deck-review-v2',
-})
-console.log(version.version, version.state) // SkillVersionRecord, not latest_version/status
-// Unpinned agents follow the new version on their own - the registry bumps their config_version.
-// Do NOT re-run putAgentSkill; it is not what propagates the update.
-```
-
-The frontmatter `name` in the new zip must still match the target skill's name, and a `description`
-passed here overrides the one in the frontmatter.
-
-**Reconcile uncertain writes.** `putAgentSkill` bumps config_version on every successful PUT.
-Source-reviewed version uploads deduplicate identical content; changed bytes create a new version.
-This is not HTTP-header idempotency or an exactly-once guarantee. Reconcile instead: `listAgentSkills` tells you whether the attach took, and
-`listSkills({ q: name })` tells you what `latest_version` actually is.
-
----
+Read `getAgent` and `listAgentSkills`; compare the desired persona and resolved assignments.
+A configuration version alone is not proof your instructions changed. For atomic updates,
+include `expected_config_version` and reconcile a `409 active_config_changed` with a fresh read.
 
 ## Step 6. Smoke test with a real turn that should use a skill
 
@@ -316,13 +195,10 @@ skill file, and reading a file is a tool call - so a matching `agent.tool` event
 Match on the skill's path (`row.location` from Step 5) appearing in the call's `args` rather than on
 a tool name: which tool the runtime uses to read files is not pinned anywhere in the SDK, and
 hardcoding a guess makes your check fail for the wrong reason. If `consulted` is false but the run
-succeeded, the usual cause is a description too vague to match on - fix it and publish a new version.
+succeeded, the usual cause is a description too vague to match on - inspect the resolved catalog assignment and the task instructions. Project keys cannot publish root Skill versions.
 
-Two consequences of that same mechanism. **Using a skill always creates the sandbox**, because the
-file has to be read somewhere - that is where first-call latency comes from, roughly 5 to 7 seconds
-of cold start on the agent's first-ever tool call. And **the first sandbox freezes the Environment
-pin** for the life of the agent, so if you were ever going to pin a custom Environment, it had to
-happen before this turn.
+A real turn can incur usage. Configuration inspection is read-only; obtain authorization before
+starting live runtime verification. Do not promise a fixed cold-start latency.
 
 ---
 
@@ -366,14 +242,13 @@ await zc.createSchedule(
 )
 ```
 
-**Verify.** The create receipt carries only `schedule_name`, not the definition, so read it back.
-The read spells everything differently from the write: your id is at `name` (`scheduleId` is the
-fully-qualified `cron/{computer_id}/{agent_id}/{schedule_id}`), and the cadence is at
-`scheduleSpec.cronExpressions[0]` - there is no `schedule` key on any read.
+**Verify.** Use the public `schedule_id` on create/read. Read the saved definition back;
+compatibility fields can include `name` and `scheduleId`. The cadence is at
+`scheduleSpec.cronExpressions[0]`; do not echo the projection as an update body.
 
 ```ts
 const stored = await zc.getSchedule(agentId, 'nightly-deck-audit') // the SHORT id you chose
-console.log(stored.name, stored.enabled, stored.scheduleSpec?.cronExpressions?.[0])
+console.log(stored.schedule_id, stored.enabled, stored.scheduleSpec?.cronExpressions?.[0])
 ```
 
 Three things to know before you rely on this:
@@ -399,10 +274,8 @@ schedule answers `triggered: true` while the run projection records `status: "sk
 
 ## Step 9. Wire up your own front end
 
-**The key is an organization credential with full read and write over every agent in the org.** It
-is not a per-user token and there is no way to scope it down. So it lives in your backend, in a
-server-side secret store, and never in a browser bundle, a mobile app, or a build-time inlined
-variable. Everything else about the integration follows from that single fact.
+The Project key belongs on your backend. It authorizes access within its Project and does not
+authenticate your application's end users. Keep it out of browser/mobile bundles and logs.
 
 The shape is `browser -> your backend -> ZooWork`, where your backend holds `ZOOWORK_API_KEY`,
 authenticates your user, and looks up the sessions it created for them. One agent, one session per
@@ -429,14 +302,14 @@ await zc.postEvents(AGENT_ID, row.session_id, [{
 adds a filtered cursor lane, but there is still no cross-agent
 session listing and no way to query sessions by end user. The `metadata` you set at create is
 readable but not searchable, and write-once besides - there is no `patchSession`. Your database is
-the index, and it is also your authorization boundary: the SDK will read any session in the org if
-you hand it an id, so the check that this session belongs to this user is yours to make.
+the index, and it is also your authorization boundary: the API applies Project resource scope, and your backend must separately check that a
+Session belongs to the signed-in application user.
 
 Per-user context belongs in the session, not in the agent - post a `system.message` event to tell
 the agent which plan the user is on or what they just clicked, rather than rewriting the persona.
 Source-reviewed `actor.ref` attributes API messages; session metadata alone does not select it.
 It is not authentication or a file/session access boundary. If users must not share an agent-scope
-`/workspace`, use an agent per user (Step 9b) and keep your own authorization checks.
+`/workspace`, use an agent per user (Per-user deployment) and keep your own authorization checks.
 
 For streaming, your backend runs `streamEvents` and re-emits to the browser in whatever format your
 UI wants, checkpointing the last successfully processed `ev.cursor` and resuming with `{ cursor }`
@@ -446,62 +319,12 @@ this sounds like a week of work, the App Kit already implements all of it; see t
 
 ---
 
-## Step 9b (when users must not share files). An agent per user, one skill for all
+## Per-user deployment
 
-One agent means one sandbox: every session works in the same persistent `/workspace`, so with one
-shared agent, a file one *user's* turn writes, another user's turn can read. When that is
-unacceptable, the shape changes from "one agent, a session per conversation" to **an agent per
-user** - and the maintenance problem changes with it: N agents to keep behaving identically while
-the product keeps changing.
-
-The fleet stays maintainable by one split: **whatever you iterate on goes into a single `org`
-skill; the per-agent configuration stays a thin, stable shell** (short persona + skill installs).
-The mechanism that makes this work is already in Step 5: an install without `versionPin` follows
-latest, so `uploadSkillVersion(skillId, zip)` is the entire rollout - the registry bumps every
-unpinned agent's `config_version` and each user's next turn runs the new version. Do **not** loop
-`putAgentSkill` after publishing a version; that call is for installing, pinning, and unpinning.
-
-At signup, create the user's agent with the skills already in the request, then remember the id:
-
-```ts
-const agent = await zc.createAgent(
-  {
-    resource: {
-      name: `myproduct-${user.id}`,
-      labels: { end_user: user.id },
-      skills: [{ skill_id: PRODUCT_SKILL_ID }], // no version -> follows latest
-      persona: { docs: [{ name: 'AGENTS.md', content: STABLE_PERSONA }] },
-    },
-  },
-  `user-${user.id}`, // stable idempotency key
-)
-await yourDb.users.update(user.id, { agent_id: agent.agent_id }) // YOUR db is the index
-await zc.startAgent(agent.agent_id)
-await zc.waitUntilRunning(agent.agent_id)
-```
-
-Same rules as Step 2 and Step 9, multiplied by N: the agent comes back **stopped**; there is no
-query-sessions-by-end-user, and no query-agents-by-end-user either (`listAgents` filters on
-`labels` but pages at 100 and lists only your bound user's agents) - store `user.id → agent_id`
-at create and check your own database before creating on any retry.
-
-Three fleet-specific traps:
-
-- **Adding a new skill later does not propagate** - only new *versions* of an installed skill do.
-  The install row is per agent. Reconcile lazily instead of sweeping: before opening a session,
-  diff `listAgentSkills(agentId)` against your desired list and PUT only what is missing. Diff
-  first - `putAgentSkill` bumps `config_version` even when it changes nothing (Step 5), so a
-  blind PUT-everything loop rewrites every agent's config on every session open.
-- **Canary by pinning.** Pin the fleet to the running version (`{ versionPin: CURRENT }`), leave
-  canary agents unpinned, publish, verify, then unpin (`{ versionPin: null }`). Each pin/unpin is
-  a config write per agent; budget the sweep.
-- **`deleteSkill` has no in-use guard** (Step 10): delete an org skill the fleet still installs
-  and every agent silently loses it. Retire it from your desired list and let reconciliation
-  `deleteAgentSkill` it everywhere first.
-
-A version publish reaches every active user's next turn - treat it as a deploy, not a draft.
-
----
+An Agent per user separates workspace files and sandbox state. Persist the mapping in your
+backend, authorize the user before every read/write, and use stable idempotency keys for
+provisioning. Keep shared persona and instructions in application source control; compare
+current declared state before updating each Agent with `expected_config_version`.
 
 ## Step 10. Tear down a throwaway experiment
 
@@ -512,7 +335,7 @@ have been cleaned up. Stop and explicitly manage the resources your experiment o
 // 1. Schedules first - they outlive the agent, and after deletion you still need agentId to
 //    address them, but a deleted agent's schedules go on firing.
 for (const s of await zc.listSchedules(agentId)) {
-  const id = s.name ?? (s.memo?.schedule_id as string | undefined)
+  const id = s.schedule_id ?? s.name ?? (s.memo?.schedule_id as string | undefined)
   if (id) await zc.deleteSchedule(agentId, id)
 }
 
@@ -523,8 +346,6 @@ await zc.stopAgent(agentId)
 // 3. Delete the agent.
 await zc.deleteAgent(agentId)
 
-// 4. Skills are org-level, not agent-level, so they survive the agent. Delete the throwaway ones.
-await zc.deleteSkill(skill.skill_id) // 204; no in-use guard - other agents holding it lose it
 ```
 
 **Verify:** `listSchedules(agentId)` is empty before you delete, and `listAgents({ labels: LABELS })`

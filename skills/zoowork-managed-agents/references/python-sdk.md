@@ -24,7 +24,7 @@ async with create_zoowork_client() as client:
 
 `create_zoowork_client()` reads `ZOOWORK_API_KEY` and `ZOOWORK_BASE_URL`. You may instead pass the
 key as the first argument and `base_url=` explicitly. The default base already ends in
-`/service/v1`; do not append another version segment. Keep the organization-wide `zct_` key on a
+`/service/v1`; do not append another version segment. Keep the Platform Project key on a
 backend, never in browser or mobile code.
 
 The mandatory lifecycle is:
@@ -189,27 +189,21 @@ not authentication. `permission` sets `always_ask` or `always_allow` for the ser
 overrides exact native tool names, with no wildcard and a maximum of 64 entries. Tool-policy
 selectors separately support an exact name, global `*`, or one trailing `prefix*`.
 
-Direct DingTalk uses `platform: "dingtalk-connector"`, `dm_policy: "open"`, and a config with
-`clientId` and `clientSecret`; it has no guided setup. Feishu document administration uses
-`permission_admin_enabled: True`. A stored channel receipt is not readiness: inspect returned
-capability sync and provider states.
+Project keys cannot bind Channels or administer root Skills and Environments; these routes
+return `404 service_api.not_found`. Use `list_agent_skills` to inspect attached catalog Skills.
+Read `developer-api.md` for Files, read-only Database, Usage, Run Output, action detail/paging
+and Agent webhook management. Check installed source before using new methods.
 
 ## Method groups
 
-- Agents: `list_models`, `create_agent`, `list_agents`, `iter_agents`, `get_agent`,
-  `update_agent`, `delete_agent`, `start_agent`, `stop_agent`, `wait_until_running`.
-- Agent skills and registry: `list_agent_skills`, `put_agent_skill`, `delete_agent_skill`,
-  `upload_skill`, `upload_skill_version`, `list_skills`, `delete_skill`.
-- Channels: `list_channels`, `add_channel`, `update_channel`, `remove_channel`, generic guided
-  setup methods, and Feishu compatibility methods.
-- Sessions and events: `create_session`, `get_session`, `list_sessions`, `list_session_page`,
-  archive/delete, post/list/stream events, and the custom-tool methods above.
-- Approvals, artifacts, system prompts, schedules, `wake`, `exec`, Environments, and immutable
-  Environment versions mirror the TypeScript public capability groups with snake_case names.
-
-Read `references/typescript-sdk.md` for the shared wire semantics of a capability not expanded
-here, but write Python names and calling conventions. The Python source and annotations remain
-the authority for the exact signature.
+- Agent lifecycle, filtered Session listing, events, custom tools, approvals, schedules,
+  artifacts, system prompts, `wake` and `exec` use Python snake_case names.
+- Session create input accepts `runtime_mode: "active"` and `idle_compaction` alongside initial
+  events and metadata. Explicit active pins the configuration at creation; omission resolves
+  active configuration on later turns.
+- Agent updates accept `expected_config_version`; stale writes return `409 active_config_changed`.
+- MCP exact tool overrides accept `requireConfirmation` as true, false or omitted. True requires `permission: "always_ask"` and offers allow-once or deny. Runtime
+  context does not authenticate the caller.
 
 ## Errors
 

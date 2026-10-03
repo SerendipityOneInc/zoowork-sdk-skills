@@ -46,11 +46,11 @@ Worth separating before it causes confusion, because both words appear in the sa
 
 - **The skills in this repo** are installed into a *developer's coding assistant*, and are read while
   writing code.
-- **ZooWork platform skills** are uploaded with `POST /v1/skills` and attached to a *running ZooWork
-  agent*, which reads them while doing its job.
+- **ZooWork platform Skills** run inside a ZooWork Agent. Choose catalog Skills for the Agent
+  and inspect the resolved assignments with `listAgentSkills`.
 
-The skill here teaches an assistant how to build and upload the other kind. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for the full distinction.
+This repository teaches a coding assistant to use the public SDK and Platform capabilities.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the distinction.
 
 ## Layout
 
