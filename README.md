@@ -17,8 +17,18 @@ assistants you have - Claude Code, Codex, Cursor, OpenCode and 70-odd others - e
 directory it actually reads. It needs **Node 22.20 or later**.
 
 Useful flags: `-g` installs for every project instead of the current one, `-a claude-code`
-targets one assistant, `--copy` copies instead of symlinking (a symlink means upstream
-updates reach you without reinstalling).
+targets one assistant, and `--copy` creates independent copies instead of symlinks to the
+local canonical installation. A symlink does not fetch changes from GitHub automatically.
+
+To fetch updates for installed skills, run:
+
+```bash
+npx skills update
+```
+
+See the [skills CLI update documentation](https://github.com/vercel-labs/skills#skills-update)
+for scope and selection options. A repository release does not itself update an existing local
+installation.
 
 Using Claude Code and nothing else? The plugin route does the same job:
 

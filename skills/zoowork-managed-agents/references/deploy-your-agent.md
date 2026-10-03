@@ -2,7 +2,7 @@
 
 You have a persona, one or more skill directories, and a front end you can host. What you do not
 have is somewhere for the agent loop and its skills to run. This file turns that into a hosted
-Agent with persona instructions, available catalog Skills and Session task inputs. Verify
+Agent with persona instructions, catalog or uploaded Skills and Session task inputs. Verify
 configuration, then run a real turn only when authorized; keep your backend in front of it.
 
 Run the steps in order, and perform each verification - several of these calls report success in
@@ -16,7 +16,7 @@ Map local inputs onto supported Platform resources before writing calls.
 | What you built locally | Where it goes | What to know |
 |---|---|---|
 | System prompt, persona file, `CLAUDE.md` / `AGENTS.md` | `resource.persona.docs[]` on `createAgent` | An array of `{ name, content }`, not a map. Editable later with `updateAgent` |
-| A skill directory containing `SKILL.md` | Instructions in `persona.docs`; task data in Session messages | Project keys do not upload root Skill ZIPs. Steps 4 and 5 |
+| A skill directory containing `SKILL.md` | ZIP upload to the Skill registry, then an Agent binding | Check deployment support and Project write scope. Steps 4 and 5 |
 | Custom tool / function definitions | `resource.custom_tools`; your application handles `agent.custom_tool_use` and resolves the call | Verified in production with REST resolution and `user.custom_tool_result`. Keep a pending-call recovery loop |
 | Local text task data | A `user.message` in a Session | Read text in your application and include it in the message. Ask the Agent to create any needed files in `/workspace`; this is not a directory upload or mount |
 | Your chat UI | Stays yours | It talks to your backend, never to ZooWork. Step 9 |
@@ -146,15 +146,22 @@ request as well as the gap between polls, and throws a `ZooworkError` with
 
 ---
 
-## Step 4. Choose available Skills and supply task inputs
+## Step 4. Upload or select Skills, then supply task inputs
 
-New Agents receive global Skills by default. Choose catalog Skills by `name` or `skill_id`
-when creating the Agent and inspect `listAgentSkills(agentId)` afterwards. Project keys cannot
-upload root Skill ZIPs. Put custom instructions in `persona.docs`. Read local text task data
-in your application and include it in a Session `user.message`. Ask the Agent to create
-workspace files and publish outputs with `artifact_publish`; retrieve them through the Artifact
-API. A workspace file is not a registered Skill. Follow `developer-api.md` for the input and
-download flow; do not insert a direct Files helper call before opening the Session.
+Read [Skill registry](./skill-registry.md) before uploading a local Skill directory. Package each
+Skill separately, use the key's permitted scope, save its returned `skill_id`, and attach it with
+`putAgentSkill` / `put_agent_skill`. On a deployment with Project-key registry support, a named
+Project key uses `project` scope and a Default Project key uses `org` scope. This contract is
+source-reviewed; confirm deployment support and inspect the installed SDK before making writes.
+Do not claim that a local ZIP has been uploaded until its request succeeds.
+
+New Agents receive global Skills by default. For existing catalog Skills, choose by `name` or
+`skill_id` at create time. Inspect `listAgentSkills(agentId)` after binding either kind of Skill.
+Put standing persona instructions in `persona.docs`; this does not package scripts or resources
+from a local Skill folder. Read local text task data in your application and include it in a
+Session `user.message`. Ask the Agent to publish outputs with `artifact_publish` and retrieve
+those through the Artifact API. Skill ZIP publishing is not a general binary task input or
+workspace upload API; follow `developer-api.md` for that separate boundary.
 
 ## Step 5. Verify the declared configuration
 
@@ -200,7 +207,9 @@ skill file, and reading a file is a tool call - so a matching `agent.tool` event
 Match on the skill's path (`row.location` from Step 5) appearing in the call's `args` rather than on
 a tool name: which tool the runtime uses to read files is not pinned anywhere in the SDK, and
 hardcoding a guess makes your check fail for the wrong reason. If `consulted` is false but the run
-succeeded, the usual cause is a description too vague to match on - inspect the resolved catalog assignment and the task instructions. Project keys cannot publish root Skill versions.
+succeeded, inspect the resolved assignment, its location, and the task instructions. A description
+may not have matched the task. For an updated ZIP, publish a version using the registry guide;
+check the binding's version pin and verify runtime behavior separately.
 
 A real turn can incur usage. Configuration inspection is read-only; obtain authorization before
 starting live runtime verification. Do not promise a fixed cold-start latency.

@@ -49,7 +49,7 @@ test('reconnect tripwire rejects seq/after and accepts cursor with cancellation'
 
 test('contract tripwire rejects old interval/version shapes', () => {
   assert.equal(check(8, 'createSchedule(a, { schedule: { kind: "every", every: 60 } }); const v = await zc.uploadSkillVersion(id, zip); console.log(v.latest_version, v.status)').status, 1)
-  assert.equal(check(8, 'createSchedule(a, { schedule: { kind: "every", everyMs: 60_000 } }); if (run.session_id) use(run.session_id); // Project keys cannot upload root Skill registry ZIPs').status, 0)
+  assert.equal(check(8, 'createSchedule(a, { schedule: { kind: "every", everyMs: 60_000 } }); if (run.session_id) use(run.session_id); const v = await zc.uploadSkillVersion(id, zip); // The org Skill is read-only for this named Project key').status, 0)
 })
 
 test('custom-tool tripwire requires declaration, handling, recovery and evidence boundary', () => {
@@ -119,7 +119,8 @@ test('schedule session guard accepts a local alias without treating quoted prose
   assert.equal(check(8, `
     createSchedule(a, { schedule: { kind: "every", everyMs: 60_000 } });
     const sessionId = run.session_id; if (!sessionId) continue;
-    Use everyMs, not every: 60. Project keys cannot upload root Skill registry ZIPs.
+    const v = await zc.uploadSkillVersion(id, zip);
+    Use everyMs, not every: 60. The org Skill is read-only for this named Project key.
   `).status, 0)
 })
 
@@ -155,3 +156,12 @@ test('CSV workflow rejects direct Files helpers and requires message input plus 
     assert.equal(check(id, source.replace(/(?:downloadArtifact|download_artifact)/g, 'readOutput')).status, 1)
   }
 })
+
+// These examples only test assertion behavior; they are not behavioral eval results.
+test('Skill upload tripwire distinguishes Project ZIP publishing from the old blanket ban', () => {
+  const common = 'persona.docs idempotency key; putAgentSkill(agentId, skillId); verify server deployment support. ';
+  assert.equal(check(2, common + 'Project keys cannot upload root Skill registry ZIPs.').status, 1);
+  assert.equal(check(2, common + "curl -F 'scope=project' -F 'files[]=@skill.zip' ${base}/skills").status, 0);
+  assert.equal(check(2, common + "form.append('scope', 'project'); form.append('files[]', zip)").status, 0);
+  assert.equal(check(2, common + "form.append('scope', 'org'); form.append('files[]', zip)").status, 1);
+});
