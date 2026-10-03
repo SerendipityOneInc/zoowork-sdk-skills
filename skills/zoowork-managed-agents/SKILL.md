@@ -221,8 +221,9 @@ Do not run live, billable, or tenant-mutating calls merely to answer a design qu
   default `urllib` User-Agent (`Python-urllib/...`) with `403` and the body `error code: 1010`.
   That is not an API-key error; set an explicit `User-Agent` header if you must use `urllib`.
 - `exec(agentId, args)` takes argv. A non-zero process exit can still be HTTP 200.
-- Deleting an Agent does not delete its schedules. Remove schedules before deleting a throwaway
-  Agent.
+- To remove a throwaway Agent, delete its schedules, call `stopAgent`, then `deleteAgent`.
+  Deletion alone neither stops the sandbox nor removes schedules. If the stop fails, read
+  `getAgent` and retry the stop before deleting; a deleted Agent cannot be stopped later.
 - Do not mix TypeScript camelCase with Python snake_case. Treat identifiers, cursors, and unknown
   response fields as opaque.
 
