@@ -1,7 +1,7 @@
 # TypeScript SDK surface
 
 Client methods are grouped below. The installed package's `dist/index.d.ts` is the authority
-for availability and signatures. Read `developer-api.md` for text task inputs, file outputs, Database, Usage, Run Output,
+for signatures, not deployment availability. Apply the production restrictions below first. Read `developer-api.md` for text task inputs, file outputs, Database, Usage, Run Output,
 action paging and signed webhook helpers, including release checks and HTTP fallback.
 
 ## Client construction
@@ -53,7 +53,8 @@ for an existing Agent while `selectable` is false. Filter with `row.selectable !
 new create or update; otherwise the service answers `409 model_not_selectable`. Lifecycle fields
 include `expired_at`, `expired_fallback_to`, `retired_at`, `revision`, `lifecycle_status`,
 `retire_not_before`, and `default_for`. Refresh the catalog and prefer the replacement alias when
-one is supplied.
+one is supplied. `default_for` names configuration slots such as `model`, `imageModel`,
+`imageGenerationModel` and `pdfModel`, not input modalities; do not filter it by `text`.
 
 ## Agents
 
@@ -63,8 +64,8 @@ A stored, versioned configuration. Create once, keep the `agent_id`, reference b
 createAgent(input: { resource: AgentResource; ownership?: Ownership }, idempotencyKey?: string): Promise<AgentRecord>
 listAgents(opts?: AgentListParams): AgentPagePromise
 getAgent(agentId: string): Promise<AgentRecord>
-updateAgent(agentId: string, sections: Record<string, unknown>): Promise<AgentRecord>  // per-section PUT; ownership-only changes do not bump config_version; supports expected_config_version
-deleteAgent(agentId: string): Promise<void>                     // 204; does NOT remove the agent's schedules - delete those yourself first
+updateAgent(agentId: string, sections: Record<string, unknown>): Promise<AgentRecord>  // per-section PUT; ownership-only changes do not bump config_version; production rejects expected_config_version
+deleteAgent(agentId: string): Promise<void>                     // first success 204, repeat 404; does NOT remove the agent's schedules - delete those yourself first
 startAgent(agentId: string): Promise<{ warnings: string[] }>    // successful warnings are informational; non-2xx still throws
 stopAgent(agentId: string): Promise<{ warnings: string[] }>     // does not clear environment_locked, does not remove schedules
 waitUntilRunning(agentId: string, opts?: { timeoutMs?: number; intervalMs?: number; signal?: AbortSignal }): Promise<AgentRecord>
@@ -81,8 +82,9 @@ receipt and the read projection are different documents under one `AgentRecord` 
 
 Read the version across both as `agent.status?.config_version ?? agent.config_version`. One alone is
 `undefined` on the other path, and `undefined === undefined` makes a "nothing changed" check pass
-when it should not. Send `expected_config_version` to atomically check the active version on update; a mismatch
-is `409 active_config_changed`. Configuration writes can increment it even with identical values,
+when it should not. Production rejects `expected_config_version` on Agent updates with
+`400 invalid_declared_key`. Omit it and serialize competing writes in your backend; GET then
+PUT is not atomic. Configuration writes can increment the version even with identical values,
 while ownership-only changes do not. Read your declared section to reconcile uncertain writes.
 
 **`updateAgent` merges per section.** `sections` is the declared config keyed by section, so sending
@@ -137,7 +139,7 @@ intermediaries may strip custom headers. These identifiers are context, not auth
 `mcp__<server>__<tool>` prefix is added, accepts no wildcard keys, and is capped at 64 entries.
 Omission preserves the default-allow behavior. An allow-always decision on a server wildcard
 covers every tool from that server for the Session; use exact overrides when that scope is too
-broad. The approval round trip remains unverified.
+broad. Production checks exercised MCP approval with allow-once and deny.
 
 Tool-policy matching uses exact names, global `*`, or one trailing `prefix*` in allow, deny, rule
 match/afterRules and deferred MCP pinned entries. Other star placements match nothing.
@@ -405,9 +407,10 @@ definition; an identical retry is accepted. PUT and DELETE carry no cross-timeou
 guarantee - after a timeout, reconcile by listing and reading runs rather than blind-retrying.
 **Schedules outlive their agent**: neither `stopAgent` nor `deleteAgent` removes them, so delete
 them yourself first or they keep firing against a deleted agent. `triggerSchedule` returns
-`triggered: true` even for a **disabled** schedule, while the run projection records
-`status: "skipped"`. `triggered` means the fire was dispatched; it never means the turn ran, so read
-`listScheduleRuns`. Those rows mix two shapes discriminated by `source`: `temporal` rows are
+`triggered: true` even for a **disabled** schedule, which is then skipped. Manual execution
+requires `enabled: true`; enabling also activates automatic firings. The receipt means a
+request was accepted, not that work ran. Read `listScheduleRuns` and follow schedule webhooks;
+skipped rows can lack `status` and `session_id`, so do not infer success from missing fields. Those rows mix two shapes discriminated by `source`: `temporal` rows are
 dispatch records (`scheduled_at` / `taken_at` / `workflow_id` / `temporal_run_id`) saying nothing
 about the outcome, `run_projection` rows are outcome records (`fired_at` / `status` /
 `consecutive_errors`). Source-reviewed rows may carry `session_id` when associated with a session. It is optional,
@@ -453,15 +456,16 @@ export type ApprovalDecision = 'allow-once' | 'allow-always' | 'deny'
 Because `status` may only be omitted or `'pending'`, resolved approvals cannot be listed - record
 decisions yourself if you need an audit trail. Where no approval signaler is configured the route
 answers `501 not_configured`, a deployment property your code cannot fix. Two shapes describe the
-same act and do not line up - this REST resource, and the `user.tool_confirmation` event you write
-with `postEvents`. They are not two views of one object, so do not correlate an `approval_id` with a
-tool-call id. **The end-to-end loop remains unverified.** Recorded approval lists are empty.
+same approval flow: this REST resource and the `user.tool_confirmation` event you write
+with `postEvents`. Use the approval ID to resolve a decision and `tool_call_id` to associate its
+tool UI; the two IDs are not interchangeable. Production checks exercised REST and event
+confirmation with allow-once and deny.
 Source-reviewed fields include `arguments_preview?: string`, `requested_at`, `timeout_at`,
 `allowed_decisions`, `resolved_by`, `resolved_at`, `decision` and `signaled`;
 `created_at` is kept only for legacy compatibility. Optional fields can be absent.
 A 202 resolve with `signaled: true` can still have `status: 'pending'`: this acknowledges
-signaling, not action completion. Deployment support and turn-budget behavior need separate
-verification. Keep dangerous actions gated; see `references/not-supported.md` - End-to-end human approval.
+signaling, not action completion. Observe the later tool/run outcome and authorize the reviewer
+in your own application; see `references/not-supported.md` - Human approval signals.
 
 ## System prompt
 
@@ -566,3 +570,6 @@ is a hint, not permission to replay a write or proof the SDK retried it.
 MCP tool overrides accept `requireConfirmation?: boolean`. True requires `permission: 'always_ask'`
 and limits decisions to allow-once or deny; it prevents persistent grants from skipping confirmation.
 False or omission retains ordinary permission behavior.
+
+Agent deletion through the public API returns 204 once and 404 on repetition. A 404 can also hide
+an inaccessible resource: reconcile cleanup only for a known Agent with unchanged key scope.

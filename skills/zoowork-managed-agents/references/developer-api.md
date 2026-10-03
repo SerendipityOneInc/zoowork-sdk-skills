@@ -10,8 +10,6 @@ merely to answer a capability question.
 
 | TypeScript | Python | Public contract |
 |---|---|---|
-| `getAgentDatabase(agentId)` | `get_agent_database(agent_id)` | Read-only database catalog |
-| `getAgentDatabaseRows(agentId, table, { limit?, offset? })` | `get_agent_database_rows(agent_id, table, limit=..., offset=...)` | Read-only rows; limit 1–100, offset nonnegative |
 | `getUsage({ range?, groupBy?, view?, perPage?, snapshot?, cursor? })` | `get_usage(range=..., group_by=..., view=..., per_page=..., snapshot=..., cursor=...)` | GET /service/v1/usage; current key scope |
 | `getRunOutput(agentId, sessionId, runId, { cursor?, limit? })` | `get_run_output(agent_id, session_id, run_id, cursor=..., limit=...)` | One run's output, with completion and paging metadata |
 | `getApproval(agentId, approvalId)` | `get_approval(agent_id, approval_id)` | Pending or terminal approval |
@@ -19,13 +17,20 @@ merely to answer a capability question.
 | `listApprovalPage(agentId, { status?, sessionId?, cursor?, limit? })` | `list_approval_page(agent_id, status=..., session_id=..., cursor=..., limit=...)` | Object with approvals, has_more, next_cursor |
 | `listCustomToolCallPage(agentId, opts)` | `list_custom_tool_call_page(agent_id, **opts)` | Object with custom_tool_calls, has_more, next_cursor |
 
-Database reads do not provision a missing database: handle `status: 'not_provisioned'` normally.
+The production Database viewer is unavailable: catalog and table-row endpoints return 404
+although the Agent's `agent_db` tool works. Do not generate viewer SDK or HTTP calls as a
+working app flow. Ask the Agent to query with `agent_db` and return results in a Session or
+publish a report Artifact. Those are Agent-mediated results, not direct application DB reads.
 
 Use `range: '24h' | '7d' | '30d'`, `groupBy: 'session' | 'api_key'`, and
 `view: 'groups' | 'records' | 'both'` for Usage. Other filters include session/key/root-session,
 attribution, timezone, page, as-of and snapshot/cursor. Python uses snake_case for helper
 parameters. Responses retain API spelling and unknown fields. Reporting does not enforce a
-Session dollar cap.
+Session dollar cap. Production invalid Usage parameters can return 422 with a `detail` array
+and no business error type (for example an invalid range or page size), or 400
+`usage.invalid_query` for invalid timezone. Correct the query; do not retry unchanged.
+`credits` uses Platform credits, at 200 credits/USD. Key-scoped consumption is not the
+Organization balance or a complete Organization cost report.
 
 Action lists allow omitted or pending status. Original list methods still return arrays; page
 methods opt into pagination and retain metadata. Detail reads do not require pending status.

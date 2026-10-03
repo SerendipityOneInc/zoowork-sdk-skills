@@ -157,8 +157,9 @@ download flow; do not insert a direct Files helper call before opening the Sessi
 ## Step 5. Verify the declared configuration
 
 Read `getAgent` and `listAgentSkills`; compare the desired persona and resolved assignments.
-A configuration version alone is not proof your instructions changed. For atomic updates,
-include `expected_config_version` and reconcile a `409 active_config_changed` with a fresh read.
+A configuration version alone is not proof your instructions changed. Production rejects
+`expected_config_version` with `400 invalid_declared_key`. Omit it and serialize competing
+writes in your application; a GET followed by PUT is not atomic.
 
 ## Step 6. Smoke test with a real turn that should use a skill
 
@@ -269,8 +270,9 @@ Three things to know before you rely on this:
 To find what a fire produced: source-reviewed `listScheduleRuns` rows can carry optional
 `session_id`. Follow it when present. Otherwise inspect `listSessions(agentId)` and match
 `channel === 'cron'` with a `session_key` beginning `agent:{agent_id}:cron:{schedule_id}:`. And
-`triggerSchedule` answering `triggered: true` means dispatched, never that the turn ran; a disabled
-schedule answers `triggered: true` while the run projection records `status: "skipped"`.
+`triggerSchedule` answering `triggered: true` acknowledges a request, not execution. A disabled
+schedule is skipped and its run row can lack status/session linkage. Enable before triggering;
+this also activates automatic firings. Use `schedule.skipped` webhooks to observe skip reasons.
 
 ---
 
@@ -326,7 +328,8 @@ this sounds like a week of work, the App Kit already implements all of it; see t
 An Agent per user separates workspace files and sandbox state. Persist the mapping in your
 backend, authorize the user before every read/write, and use stable idempotency keys for
 provisioning. Keep shared persona and instructions in application source control; compare
-current declared state before updating each Agent with `expected_config_version`.
+current declared state and serialize updates per Agent. Omit `expected_config_version`,
+which production rejects; reading before writing does not provide an atomic precondition.
 
 ## Step 10. Tear down a throwaway experiment
 
