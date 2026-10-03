@@ -5,7 +5,7 @@
     {
       "id": 1,
       "name": "first-integration-from-zero",
-      "prompt": "I have a ZooWork API key (the zct_ kind). Write me a small Node script I can run with tsx that creates an agent, asks it 'what is the capital of France', prints the answer as it streams, and then deletes the agent again so I don't leave junk behind.",
+      "prompt": "I have a ZooWork API key (a Platform Project key). Write me a small Node script I can run with tsx that creates an agent, asks it 'what is the capital of France', prints the answer as it streams, and then deletes the agent again so I don't leave junk behind.",
       "expected_output": "A TypeScript file importing @zoowork-ai/sdk that creates an agent, starts it, waits on desired_state (ideally via waitUntilRunning), opens a session with an initial user.message, streams until run.finished, then stops and deletes.",
       "files": [],
       "assertions": [
@@ -88,8 +88,8 @@
     {
       "id": 2,
       "name": "host-a-locally-built-agent",
-      "prompt": "I built a deck-editing assistant locally with Claude Code. It's a system prompt in AGENTS.md plus two skill folders (slide-layout/ and chart-builder/, each with a SKILL.md). My front end is fine, I host that myself - what I don't have is anywhere for the agent and its skills to actually run. I have a ZooWork key. Set this up for me.",
-      "expected_output": "A provisioning script that creates an agent carrying the system prompt as persona.docs, zips each skill directory with the top-level directory name matching the SKILL.md frontmatter name, uploads each with a scope, attaches them, and verifies the attachment with listAgentSkills.",
+      "prompt": "I built a deck-editing assistant locally with Claude Code. It's a system prompt in AGENTS.md plus two skill folders (slide-layout/ and chart-builder/, each with a SKILL.md). My front end is fine, I host that myself - what I don't have is anywhere for the agent and its skills to actually run. I have a ZooWork key. Set this up for me. I use a Platform Project key. Explain which deployment steps are supported and do not invent a root ZIP upload workflow.",
+      "expected_output": "Persona instructions, catalog Skill selection and workspace files with a clear Project-key capability boundary.",
       "files": [],
       "assertions": [
         {
@@ -98,45 +98,6 @@
           "patterns": [
             "persona",
             "docs"
-          ]
-        },
-        {
-          "name": "uploads the skills through the SDK",
-          "kind": "present",
-          "patterns": [
-            "uploadSkill"
-          ]
-        },
-        {
-          "name": "passes a scope on upload",
-          "kind": "present",
-          "patterns": [
-            "scope:\\s*['\"](org|personal)['\"]"
-          ]
-        },
-        {
-          "name": "surfaces the zip top-level directory rule",
-          "kind": "present",
-          "patterns": [
-            "top-level",
-            "top level",
-            "directory name",
-            "frontmatter"
-          ]
-        },
-        {
-          "name": "attaches after uploading",
-          "kind": "order",
-          "patterns": [
-            "uploadSkill",
-            "putAgentSkill"
-          ]
-        },
-        {
-          "name": "verifies the attachment rather than trusting the response",
-          "kind": "present",
-          "patterns": [
-            "listAgentSkills"
           ]
         },
         {
@@ -154,6 +115,22 @@
             "VITE_ZOOWORK",
             "NEXT_PUBLIC_ZOOWORK",
             "REACT_APP_ZOOWORK"
+          ]
+        },
+        {
+          "name": "identifies root Skill registry unavailability",
+          "kind": "present",
+          "patterns": [
+            "root.{0,40}(Skill|skill|registry)",
+            "(upload|ZIP).{0,60}(unavailable|cannot|not available)"
+          ]
+        },
+        {
+          "name": "provides workspace inputs or catalog selection",
+          "kind": "present",
+          "patterns": [
+            "writeWorkspaceFile",
+            "catalog"
           ]
         }
       ]
@@ -227,7 +204,7 @@
           "patterns": [
             "source-reviewed",
             "not (?:deployment-|live-)?verified",
-            "源码(?:已)?(?:审查|审阅|核对)[\\s\\S]{0,160}(?:尚未|没有|未完成).{0,40}(?:线上部署|真实部署|端到端)"
+            "\u6e90\u7801(?:\u5df2)?(?:\u5ba1\u67e5|\u5ba1\u9605|\u6838\u5bf9)[\\s\\S]{0,160}(?:\u5c1a\u672a|\u6ca1\u6709|\u672a\u5b8c\u6210).{0,40}(?:\u7ebf\u4e0a\u90e8\u7f72|\u771f\u5b9e\u90e8\u7f72|\u7aef\u5230\u7aef)"
           ]
         }
       ]
@@ -275,14 +252,14 @@
       "id": 6,
       "name": "no-key-yet-onboarding",
       "prompt": "I want to try ZooWork managed agents from my Node backend. I don't have an API key or anything set up yet - where do I even start?",
-      "expected_output": "Guides the user to create a key at https://zoowork.ai/identity?tab=account-api-keys (Settings -> API Keys), warns the secret is shown exactly once, has them save it into ZOOWORK_API_KEY themselves without pasting it into the chat, and verifies with listModels() before writing integration code.",
+      "expected_output": "Guide to https://platform.zoowork.ai, a Project key shown once, backend environment storage and a cheap listModels check.",
       "files": [],
       "assertions": [
         {
-          "name": "gives the real console URL instead of guessing a signup page",
+          "name": "gives the Platform console URL",
           "kind": "present",
           "patterns": [
-            "zoowork\\.ai/identity\\?tab=account-api-keys"
+            "https://platform\\.zoowork\\.ai"
           ]
         },
         {
@@ -291,7 +268,8 @@
           "patterns": [
             "[Ss]hown (exactly )?once",
             "only (be )?shown once",
-            "[Cc]opy (it|the (key|secret)) (immediately|right away|now)"
+            "[Cc]opy (it|the (key|secret)) (immediately|right away|now)",
+            "[Ss]hown only once"
           ]
         },
         {
@@ -300,7 +278,8 @@
           "patterns": [
             "not (to )?paste.{0,40}(chat|here|conversation)",
             "([Dd]on'?t|[Dd]o not|[Nn]ever) (paste|share).{0,60}(chat|here|with me|conversation)",
-            "without (sharing|pasting) (it|the key)"
+            "without (sharing|pasting) (it|the key)",
+            "[Ss]ave.{0,50}yourself[\\s\\S]{0,180}(outside|out of)[\\s\\S]{0,70}chat"
           ]
         },
         {
@@ -354,8 +333,8 @@
     {
       "id": 8,
       "name": "interval-and-skill-version-contracts",
-      "prompt": "Write TypeScript snippets to create a ZooWork schedule every 60 seconds with a stable ID, inspect an optional linked session from a run, and upload a new version of our existing skill ZIP. Print the uploaded version and its state. Can I reuse latest_version from the root skill response?",
-      "expected_output": "Schedule input uses everyMs:60000, not every. Guard optional run.session_id. uploadSkillVersion returns version/state, not root latest_version/status. Do not imply the snippet was live-tested.",
+      "prompt": "Write TypeScript snippets with a Platform Project key to create a ZooWork schedule every 60 seconds with a stable ID and inspect an optional linked session from a run. Can this key upload a new version of our Skill ZIP? Explain the capability boundary.",
+      "expected_output": "everyMs schedule, optional session association, and clear root Skill registry unavailability.",
       "files": [],
       "assertions": [
         {
@@ -369,21 +348,23 @@
           "name": "does not send the old every field",
           "kind": "absent",
           "patterns": [
-            "\\bevery\\s*:"
-          ]
-        },
-        {
-          "name": "reads version and state",
-          "kind": "present",
-          "patterns": [
-            "(?=[\\s\\S]*uploadSkillVersion\\s*\\()(?=[\\s\\S]*\\.version\\b)(?=[\\s\\S]*\\.state\\b)"
+            "(?:[{,]\\s*|\\n\\s*)every\\s*:"
           ]
         },
         {
           "name": "checks optional session association",
           "kind": "present",
           "patterns": [
-            "(?:if\\s*\\([^)]*session_id|session_id\\s*\\?|session_id\\s*&&)"
+            "(?:if\\s*\\([^)]*session_id|session_id\\s*\\?|session_id\\s*&&)",
+            "const\\s+(\\w+)\\s*=\\s*\\w+\\.session_id[\\s\\S]{0,80}if\\s*\\(\\s*!?\\1\\s*\\)"
+          ]
+        },
+        {
+          "name": "identifies root registry restriction",
+          "kind": "present",
+          "patterns": [
+            "(root|Project).{0,100}(registry|upload)",
+            "(upload|ZIP).{0,100}(cannot|unavailable|not available)"
           ]
         }
       ]
@@ -391,31 +372,24 @@
     {
       "id": 9,
       "name": "channel-allowlist-boundary",
-      "prompt": "I passed allow_from with two sender IDs to addChannel. Can I rely on that as the only access control? Also, does binding Feishu make those conversations inaccessible to our organization API key?",
-      "expected_output": "Public gateway ignores allow_from; it is not an ACL. dm_policy affects channel policy. Separate conversation context does not make IM sessions inaccessible to an org key. Backend end-user authorization remains required.",
+      "prompt": "I passed allow_from with two sender IDs to addChannel. Can I rely on that as the only access control? Also, does binding Feishu make those conversations inaccessible to our organization API key? We are using a Platform Project key; explain the available product boundary before proposing any Channel calls.",
+      "expected_output": "Project keys cannot bind/administer Channels; use API Sessions and backend authorization.",
       "files": [],
       "assertions": [
         {
-          "name": "identifies ignored allow_from",
+          "name": "identifies Project Channel restriction",
           "kind": "present",
           "patterns": [
-            "allow_from[\\s\\S]{0,180}ignor",
-            "ignor[\\s\\S]{0,180}allow_from"
+            "(Project|Platform).{0,150}(cannot|unavailable|not available|404)",
+            "404\\s+service_api\\.not_found"
           ]
         },
         {
-          "name": "mentions effective dm_policy",
+          "name": "preserves application authorization",
           "kind": "present",
           "patterns": [
-            "dm_policy"
-          ]
-        },
-        {
-          "name": "retains backend authorization",
-          "kind": "present",
-          "patterns": [
-            "[Bb]ackend[\\s\\S]{0,180}authoriz",
-            "authoriz[\\s\\S]{0,180}[Bb]ackend"
+            "authoriz",
+            "backend"
           ]
         }
       ]
@@ -582,53 +556,24 @@
     {
       "id": 14,
       "name": "dingtalk-and-feishu-document-channels",
-      "prompt": "Show TypeScript SDK examples for directly binding a DingTalk channel and for enabling Feishu document permission administration. How do I tell whether the Feishu capability is actually ready, and can DingTalk use startChannelSetup?",
-      "expected_output": "Use dingtalk-connector with clientId/clientSecret and dm_policy open; do not route DingTalk through guided setup. Use permission_admin_enabled for Feishu and inspect capabilities.feishu_documents sync/provider/missing_scopes/approval_state instead of trusting the request alone. Mark these details source-reviewed rather than live-verified.",
+      "prompt": "Show TypeScript SDK examples for directly binding a DingTalk channel and for enabling Feishu document permission administration. How do I tell whether the Feishu capability is actually ready, and can DingTalk use startChannelSetup? We are using a Platform Project key; explain the available product boundary before proposing any Channel calls.",
+      "expected_output": "Project keys cannot bind/administer Channels; use API Sessions and backend authorization.",
       "files": [],
       "assertions": [
         {
-          "name": "uses the DingTalk direct platform and credentials",
+          "name": "identifies Project Channel restriction",
           "kind": "present",
           "patterns": [
-            "dingtalk-connector[\\s\\S]{0,220}clientId[\\s\\S]{0,100}clientSecret"
+            "(Project|Platform).{0,150}(cannot|unavailable|not available|404)",
+            "404\\s+service_api\\.not_found"
           ]
         },
         {
-          "name": "uses DingTalk open DM policy",
+          "name": "preserves application authorization",
           "kind": "present",
           "patterns": [
-            "dm_policy\\s*:\\s*['\"]open['\"]"
-          ]
-        },
-        {
-          "name": "does not offer DingTalk guided setup",
-          "kind": "absent",
-          "patterns": [
-            "startChannelSetup\\([^)]*['\"]dingtalk(?:-connector)?['\"]"
-          ]
-        },
-        {
-          "name": "enables and verifies Feishu document permission state",
-          "kind": "present",
-          "patterns": [
-            "permission_admin_enabled\\s*:\\s*true[\\s\\S]{0,500}capabilities[\\s\\S]{0,100}feishu_documents",
-            "capabilities[\\s\\S]{0,100}feishu_documents[\\s\\S]{0,500}permission_admin_enabled\\s*:\\s*true"
-          ]
-        },
-        {
-          "name": "checks readiness details",
-          "kind": "present",
-          "patterns": [
-            "(?=[\\s\\S]*\\bsync\\b)(?=[\\s\\S]*\\bprovider\\b)(?=[\\s\\S]*(?:missing_scopes|approval_state))"
-          ]
-        },
-        {
-          "name": "does not overclaim deployment verification",
-          "kind": "present",
-          "patterns": [
-            "source-reviewed",
-            "not (?:deployment-|live-)?verified",
-            "源码(?:已)?(?:审查|审阅|核对)[\\s\\S]{0,160}(?:尚未|没有|未完成).{0,40}(?:线上部署|真实部署|端到端)"
+            "authoriz",
+            "backend"
           ]
         }
       ]
@@ -736,7 +681,7 @@
           "patterns": [
             "source-reviewed",
             "not (?:deployment-|live-)?verified",
-            "源码(?:已)?(?:审查|审阅|核对)[\\s\\S]{0,160}(?:尚未|没有|未完成).{0,40}(?:线上部署|真实部署|端到端)"
+            "\u6e90\u7801(?:\u5df2)?(?:\u5ba1\u67e5|\u5ba1\u9605|\u6838\u5bf9)[\\s\\S]{0,160}(?:\u5c1a\u672a|\u6ca1\u6709|\u672a\u5b8c\u6210).{0,40}(?:\u7ebf\u4e0a\u90e8\u7f72|\u771f\u5b9e\u90e8\u7f72|\u7aef\u5230\u7aef)"
           ]
         }
       ]
@@ -778,20 +723,87 @@
           ]
         },
         {
-          "name": "does not point readers to the unavailable Platform site",
-          "kind": "absent",
+          "name": "uses Platform and scoped Usage reporting",
+          "kind": "present",
           "patterns": [
             "platform\\.zoowork\\.ai"
           ]
         },
         {
-          "name": "does not invent a public Usage API",
-          "kind": "absent",
+          "name": "uses the real Usage helper or HTTP endpoint",
+          "kind": "present",
           "patterns": [
             "\\.getUsage\\s*\\(",
-            "\\.listUsage\\s*\\(",
-            "/service/v1/usage",
-            "/platform/v1/usage"
+            "/service/v1/usage"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "name": "developer-api-closed-loop",
+      "prompt": "Using a Platform Project key and the current TypeScript SDK, write a backend integration outline that supplies text workspace input, inspects an existing Agent database, subscribes to run.finished, durably accepts signed raw webhook deliveries, reads the finished run output, and reports scoped usage. Include action recovery with explicit pagination. Do not run any live API requests.",
+      "expected_output": "Real SDK methods, raw-body verification and durable acceptance before acknowledgement; current key scope and opaque cursors.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "uses actual Files methods",
+          "kind": "present",
+          "patterns": [
+            "writeWorkspaceFile"
+          ]
+        },
+        {
+          "name": "uses read-only Database helper",
+          "kind": "present",
+          "patterns": [
+            "getAgentDatabase"
+          ]
+        },
+        {
+          "name": "registers Agent webhook",
+          "kind": "present",
+          "patterns": [
+            "createAgentWebhook"
+          ]
+        },
+        {
+          "name": "verifies raw bytes",
+          "kind": "present",
+          "patterns": [
+            "unwrapWebhook",
+            "verifyWebhookSignature"
+          ]
+        },
+        {
+          "name": "makes acceptance durable",
+          "kind": "present",
+          "patterns": [
+            "durable",
+            "atomic",
+            "transaction"
+          ]
+        },
+        {
+          "name": "uses action pagination",
+          "kind": "present",
+          "patterns": [
+            "listApprovalPage",
+            "listCustomToolCallPage"
+          ]
+        },
+        {
+          "name": "reads Run Output",
+          "kind": "present",
+          "patterns": [
+            "getRunOutput"
+          ]
+        },
+        {
+          "name": "uses scoped Usage reporting",
+          "kind": "present",
+          "patterns": [
+            "getUsage"
           ]
         }
       ]

@@ -41,7 +41,7 @@ test('reconnect tripwire rejects seq/after and accepts cursor with cancellation'
 
 test('contract tripwire rejects old interval/version shapes', () => {
   assert.equal(check(8, 'createSchedule(a, { schedule: { kind: "every", every: 60 } }); const v = await zc.uploadSkillVersion(id, zip); console.log(v.latest_version, v.status)').status, 1)
-  assert.equal(check(8, 'createSchedule(a, { schedule: { kind: "every", everyMs: 60_000 } }); const v = await zc.uploadSkillVersion(id, zip); console.log(v.version, v.state); if (run.session_id) use(run.session_id)').status, 0)
+  assert.equal(check(8, 'createSchedule(a, { schedule: { kind: "every", everyMs: 60_000 } }); if (run.session_id) use(run.session_id); // Project keys cannot upload root Skill registry ZIPs').status, 0)
 })
 
 test('custom-tool tripwire requires declaration, handling, recovery and evidence boundary', () => {
@@ -79,7 +79,7 @@ test('Python SDK tripwires keep snake_case custom-tool and cursor methods', () =
   `).status, 0)
 })
 
-test('lifecycle and usage boundary tripwire rejects unsafe model and invented Usage APIs', () => {
+test('lifecycle and usage tripwire requires safe model selection and scoped Usage', () => {
   assert.equal(check(17, `
     const model = (await zc.listModels())[0].model
     const usage = await zc.getUsage()
@@ -99,6 +99,18 @@ test('lifecycle and usage boundary tripwire rejects unsafe model and invented Us
       for (const session of page.sessions) if (session.deleted) reconcile(session.session_id)
       cursor = page.next_cursor ?? undefined
     } while (cursor)
-    // No public Usage API or public usage-page URL is currently documented.
+    const usage = await zc.getUsage({ range: "7d" }); // Project key scope; https://platform.zoowork.ai
+  `).status, 0)
+})
+
+// Equivalent safe answers must not fail merely because prose quotes an invalid option.
+test('onboarding accepts explicit self-storage and shown-only-once wording', () => {
+  assert.equal(check(6, 'https://platform.zoowork.ai Save the secret yourself—it is shown only once. Keep it on your backend, outside browser code, logs, and chat. Call listModels first.').status, 0)
+})
+test('schedule session guard accepts a local alias without treating quoted prose as a write', () => {
+  assert.equal(check(8, `
+    createSchedule(a, { schedule: { kind: "every", everyMs: 60_000 } });
+    const sessionId = run.session_id; if (!sessionId) continue;
+    Use everyMs, not every: 60. Project keys cannot upload root Skill registry ZIPs.
   `).status, 0)
 })

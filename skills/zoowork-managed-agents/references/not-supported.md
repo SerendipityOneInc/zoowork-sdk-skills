@@ -8,29 +8,15 @@ nearest thing that works.
 **"The SDK has no method for it" and "it does not exist" are different claims, and mixing them up
 misleads in both directions.** Before you tell a user something is missing, check
 `references/typescript-sdk.md`, `references/python-sdk.md`, or the shipped SDK declarations. The
-client already exposes approvals (`listApprovals`, `resolveApproval`), all seven schedule
-methods, six environment methods, `archiveSession` and `deleteSession`, `uploadSkill` /
-`uploadSkillVersion` / `listSkills` / `deleteSkill`, filtered Session listing, application-executed
-custom tools, `exec` and `wake`. Python exposes the same capability groups with snake_case method
-names. Whether each one is safe to build on is a separate question, and
-this file answers it wherever the recorded evidence says do not build on it.
-
----
+SDKs expose core Agent/Session lifecycle plus Files, read-only Agent Database, Usage, Agent
+webhooks, Run Output and action detail/paging. Check the installed release and read
+`developer-api.md`. A method does not extend the current key's Project permissions.
 
 ## Programmatic usage and cost reporting
 
-**What you would build.** Fetch token, request, or cost totals through a Managed Agents SDK method
-or public HTTP endpoint and display them in your own product.
-
-**What actually happens.** Managed Agents currently exposes no public Usage API through either SDK
-or the HTTP API. Do not infer one from an internal service route or invent `getUsage()` /
-`get_usage()`. There is currently no public usage-page URL documented here.
-
-**What to do instead.** Explain that this is not currently available through a documented public
-surface. If the product requires programmatic export, treat it as an unsupported requirement until
-ZooWork publishes a public contract.
-
----
+`getUsage` / `get_usage` query `/service/v1/usage` within the current key scope. Preserve
+snapshot and cursor tokens and distinguish reporting from a spending limit. The Session API
+has no per-session dollar cap or pause/resume budget contract. See `developer-api.md`.
 
 ## Application-executed custom tools
 
@@ -159,47 +145,26 @@ client: the gateway owns the credential layer and seeds model credentials itself
 `McpServerDeclaration.credential` accepts a slug and stores it on the agent, but the slug points at
 a store you cannot write to.
 
-**Why.** Your `zct_` key authenticates an entire organization. There is no end-user principal
+**Why.** Your Project key authenticates backend access within its Project. There is no end-user principal
 anywhere in this API for a secret to be scoped to, so there is nothing for a vault to key on.
 
 **What to do instead.** Keep end-user secrets in your own backend and never let them cross into the
 platform. Make the calls that need them from your own process and pass results in as messages, as
 in option 2 above. Do not smuggle a secret into an agent's persona docs, a skill file, or session
-`metadata`: persona and skills are agent-wide and shared by every session, and any holder of the
-organization key can read them back.
+`metadata`: persona and skills are agent-wide and shared by every session, and any authorized key holder can read them back.
 
 ---
 
 ## Session file attachment and repository mounting
 
-**What you would build.** Attach a PDF or a CSV to a session and ask about it; mount a git
-repository into the workspace so the agent can read the code.
+Files helpers write text into `/workspace`, inspect directories/text and read binary content.
+Sessions of one Agent share workspace files. There is no general public binary upload or
+repository mount contract. Published Artifacts are separate immutable copies; the Agent's own
+`artifact_publish` tool creates them. Download URLs are revocable capabilities.
 
-**What actually happens.** `createSession(agentId, input)` accepts exactly two fields:
-`initial_events` and `metadata`. There is no `resources[]`, no `mount_path`, no
-`github_repository`, no upload endpoint on a session. The files routes have no wired backend, so
-treat pushing bytes in as unavailable. Getting bytes OUT has one real path: when the agent itself
-publishes a workspace file with its `artifact_publish` tool, `listArtifacts` /
-`downloadArtifact` hand you a capability URL for it (see `references/typescript-sdk.md` -
-Artifacts) - but that is the agent deciding to publish, not you attaching an input.
-`attachment.created` does exist in the event vocabulary, so you may observe one, but the SDK
-offers nothing that fetches what it refers to.
-
-**What to do instead.** For anything text-sized, put the content in the conversation: a
-`user.message` with the text, or a `system.message` when it is reference material rather than
-something the user said. For files the agent must find on disk in every session, bake them into an
-Environment - `config.files[]` takes `{ path, contentBase64, executable }` and the files land under
-`/opt/zooclaw/environment/`. That is build-time and shared by every session of every agent pinned
-to it, which fits reference data and fits nothing per-user. For an agent-scope sandbox,
-`exec(agentId, ['bash', '-lc', '...'])` runs commands in `/workspace` and can place files there,
-but it is an operations side door: it is agent-wide, not per session, and a session-scope agent
-answers `409 exec_requires_agent_scope`.
-
-For a repository, the only theoretical route is having the agent clone it with bash inside its own
-sandbox. Nobody has verified it, and for a private repository it runs straight into the credential
-problem above. Treat it as an experiment to run, not a recipe to hand over.
-
----
+Use Files for text inputs and an Agent per user for file isolation. `actor.ref` does not isolate
+files. Do not introduce a repository clone recipe that requires putting private credentials in
+Agent instructions or files.
 
 ## Outcome definitions on interactive sessions
 
@@ -271,62 +236,28 @@ replace your session ownership index or grant access.
 
 ## A memory store resource
 
-**What you would build.** A store you write facts into and the agent reads across sessions, with
-CRUD and versioning of its own.
-
-**What actually happens.** There is no memory resource in the API: nothing to create, nothing to
-mount, nothing to version, nothing to read. Separately, the model may or may not have engine-side
-memory tools available to it depending on how a deployment is configured, and the API does not
-report which - so an agent may appear to remember things in one deployment and not another. Do not
-design around behavior you cannot query or control.
-
-**What to do instead.** Your database is the memory, and there are two supported ways to get it in
-front of the model. Per turn: `system.message`, which injects state your application owns (the
-user's plan, what they just clicked) without appearing as a user turn. Per agent:
-persona docs, for facts that are the same for everyone - but note `updateAgent` bumps
-`config_version` on every call including a no-op, so rewriting the persona per turn churns the
-agent's version forever. Within a conversation, keep one session: the transcript is the context,
-and a new session starts blank.
-
----
+There is no public memory-store create/mount/CRUD API. Agent-managed memory tools operate during
+turns; an authenticated backend can attribute `user.message` with `actor.ref`. Attribution is
+not authorization or file isolation. For externally managed facts, use your own database and
+pass relevant facts as inputs or expose a controlled custom tool.
 
 ## Platform signed webhooks
 
-**What you would build.** Register a callback URL, receive a signed POST when a run finishes, and
-run no long-lived process of your own.
-
-**What actually happens.** There is no webhook registration resource. The one place delivery is
-configurable at all is a schedule's `delivery` field, which accepts `none` or a typed `announce`;
-webhook delivery is refused there.
-
-**What to do instead.** Every streamed event carries a `cursor` resume token that survives
-disconnects. Hold the stream for a live conversation and, when the server closes it on idle, call
-`streamEvents(agentId, sessionId, { cursor })` again - you resume from exactly there, with
-server-side log resume. Checkpoint after processing; within-generator de-duplication does not
-make your application's effects exactly-once. For a background job, poll `listEventsPage(agentId, sessionId, { cursor })`
-on a bounded, backoff-aware interval and follow `nextCursor`. An idempotency table or atomic
-application checkpoint may still be needed for side effects.
-What you do give up is process-free operation: you pay for the connection or the poll, and someone
-has to run the loop.
-See `references/events-and-streaming.md` - Reconnecting.
-
----
+Agent webhook registration, management, delivery inspection and redelivery are public. Use
+`developer-api.md` before implementing a receiver. Verify raw bytes, check body/header identity,
+atomically persist the deduplicated event and worker item, then acknowledge. Unknown types must
+remain accepted. A 202 test/redelivery receipt is queuing, not delivery or business completion.
 
 ## Agent version pinning and rollback
 
 **What you would build.** Pin an agent to a known-good configuration version, ship a prompt change,
 and roll back when it regresses.
 
-**What actually happens.** There is no version history route, no pin, and no rollback. Older
-configurations are not retrievable through the API. `config_version` is a counter and not a handle
-to anything: every `PUT` bumps it including one that changes nothing, and so does attaching or
-detaching a skill, so a version that moved does not tell you what changed.
-
-**What to do instead.** Keep the agent configuration in your own source control and treat
-`updateAgent` as a deployment: rolling back means re-`PUT`ing the previous configuration from your
-repository. Note the asymmetry with skills, which *do* have pinning -
-`putAgentSkill(agentId, skillId, { versionPin: 3 })` freezes a skill at a version, and
-`versionPin: null` follows the latest. So an agent's prompt has no versioning while its skills do.
+There is no public configuration-history or rollback endpoint. Explicit `runtime_mode: "active"`
+on Session creation pins the current active configuration. Omission resolves active configuration
+on later turns. `expected_config_version` is an optional atomic update precondition; stale
+updates fail with `409 active_config_changed`. Keep prior configuration in your own source
+control for rollback and reconcile declared values before retrying uncertain writes.
 
 ---
 
@@ -337,7 +268,7 @@ your data never leaving it - while the platform still drives the agent loop.
 
 **What actually happens.** Nothing relocates the sandbox or exposes a worker fleet. There is no
 worker registration, durable background queue, or environment key that points sandbox execution
-somewhere else. Environments customize what is installed inside the platform sandbox. Custom
+somewhere else. Platform supplies its managed sandbox Environment. Custom
 tools let a waiting run request work from your application, but do not turn your process into a
 registered sandbox worker.
 
@@ -352,23 +283,14 @@ create-time decision because the Environment pin freezes on first sandbox creati
 
 ## Smaller absences
 
-| Absent | What you actually see | Nearest thing that works |
-|---|---|---|
-| A CLI | Both SDK packages ship libraries, not an executable | Use TypeScript, Python, or raw HTTP |
-| `agent_with_overrides` on session create | `createSession` accepts `initial_events` and `metadata`, nothing else | `updateAgent` (bumps `config_version`), or a second agent for the second configuration |
-| Per-session tool or MCP overrides | `tool_policy` and `mcp` are agent-level fields on `AgentResource` | One agent per tool configuration; every session of an agent sees the same set |
-| Session `PATCH` | `405 Method Not Allowed`: the gateway proxies GET/POST/PUT/DELETE only, so PATCH is not proxied for any resource | Session `metadata` is write-once at `createSession`; keep mutable per-conversation state in your own store |
-| `session.status_*`, `span.*`, `stop_reason` as turn signals | None of them is an event type; `SESSION_EVENT_TYPES` has 20 entries and none of these. (`stopReason` does appear at `payload.message.stopReason` on an `agent.assistant` event, but it describes that one message, not the turn) | A turn ends at `run.finished`; the outcome is `runOutcome(ev)` / `run_outcome(event)` |
-| A credential API | None exists | Nothing. Model credentials are seeded by the platform; your own secrets stay in your process |
-| Installing global skills | `listSkills({ scope: 'global' })` lists them; `putAgentSkill` on one answers 404 | Nothing to do: the global catalog is already attached to a new agent. Upload your own with `scope: 'org'` or `'personal'` |
-| Rich environment builds | `config` takes exactly `packages` (apt/npm/pip only), `files`, `build`, `networking`; anything else is `400 invalid_environment_config`. No user-defined secrets, env vars, or start hooks — the platform injects its own runtime credentials for built-in skills, but that layer is internal and not extensible | Install through `packages` and `build.script`; fetch anything secret at run time from your own service |
-| Schedule pause / unpause / archive | No such routes | `updateSchedule(agentId, scheduleId, { enabled: false })` is the off switch, `deleteSchedule` removes it. The `state.paused` field on list rows is a different thing and is unrelated to `enabled` |
-| Schedule cleanup on agent delete | Schedules outlive their agent; `stopAgent` and `deleteAgent` leave them running | `listSchedules` then `deleteSchedule` for each, before `deleteAgent` |
-| A files REST surface, or publishing an artifact from your code | The files routes have no wired backend, and publishing stays in-loop: only the agent's own `artifact_publish` tool creates an artifact | Move content as text in the conversation, or bake it into an Environment at build time. What the agent DID publish is manageable: `listArtifacts` / `getArtifact` / `downloadArtifact` / `deleteArtifact` are on the client - see `references/typescript-sdk.md` - Artifacts |
-| Scoped or read-only API keys | A `zct_` token is not scopeable: it reads and writes every agent in the organization, and this API exposes no scoping or lifetime controls | Keep it server-side only, behind your own authorization layer. Separate organizations are the only hard boundary |
-| Key rotation from your code | Key management has no API, deliberately | The ZooWork App has it: **Settings -> API Keys** creates, rotates and revokes keys (personal orgs: anyone; enterprise orgs: admins). Rotate shows the new secret exactly once. Build for the key being a value you can change without a redeploy |
-
----
+| Capability | Public boundary |
+|---|---|
+| Session-local model/tools/MCP overrides | Configure the Agent or create a separate Agent. |
+| Root Skill and Environment administration; Channel binding | Unavailable to Project keys; methods do not grant permissions. |
+| Schedule cleanup | Stop/delete does not clean schedules; remove schedules before deleting the Agent. |
+| Binary input upload | Files writes accept text; a binary content read is not an upload API. |
+| Programmatic end-user credential store | Keep credentials in your backend and call controlled custom tools. |
+| Key management | Create and manage Project keys in https://platform.zoowork.ai. Secrets are shown once. |
 
 ## When you are unsure
 

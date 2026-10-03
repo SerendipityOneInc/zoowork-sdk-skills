@@ -11,9 +11,9 @@ They are **not** the same thing as ZooWork platform skills. Two different object
 | | Where it lives | How it is installed | Who reads it |
 |---|---|---|---|
 | **This repo's skills** | A developer's coding assistant | `/plugin marketplace add`, or copied into `.claude/skills/` | The coding assistant, while writing code |
-| **ZooWork platform skills** | A ZooWork agent's sandbox | `POST /v1/skills` (upload), then `PUT /v1/agents/{id}/skills/{id}` (install) | A running ZooWork agent, while doing its job |
+| **ZooWork platform Skills** | A ZooWork Agent sandbox | Catalog selection and Agent assignment | A running ZooWork Agent |
 
-A skill in this repo may well *teach* an agent how to build and upload a platform skill. It is still
+A skill in this repo may well *teach* an agent how to choose and use a platform Skill. It is still
 a knowledge package, not a platform skill. If you are adding something meant to be uploaded to a
 running ZooWork agent, it does not belong here.
 
