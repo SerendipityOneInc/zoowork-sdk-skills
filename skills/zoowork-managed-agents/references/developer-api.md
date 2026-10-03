@@ -32,7 +32,9 @@ Session dollar cap. Production invalid Usage parameters can return 422 with a `d
 and no business error type (for example an invalid range or page size), or 400
 `usage.invalid_query` for invalid timezone. Correct the query; do not retry unchanged.
 `credits` uses Platform credits, at 200 credits/USD. Key-scoped consumption is not the
-Organization balance or a complete Organization cost report.
+Organization balance or a complete Organization cost report; Organization admins see the balance
+and Organization-wide usage, including shared sandbox costs, in Platform at
+<https://platform.zoowork.ai>.
 
 Action lists allow omitted or pending status. Original list methods still return arrays; page
 methods opt into pagination and retain metadata. Detail reads do not require pending status.
