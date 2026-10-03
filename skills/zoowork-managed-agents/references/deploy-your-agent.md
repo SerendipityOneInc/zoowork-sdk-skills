@@ -17,7 +17,7 @@ Map local inputs onto supported Platform resources before writing calls.
 |---|---|---|
 | System prompt, persona file, `CLAUDE.md` / `AGENTS.md` | `resource.persona.docs[]` on `createAgent` | An array of `{ name, content }`, not a map. Editable later with `updateAgent` |
 | A skill directory containing `SKILL.md` | Instructions in `persona.docs`; task data in Session messages | Project keys do not upload root Skill ZIPs. Steps 4 and 5 |
-| Custom tool / function definitions | `resource.custom_tools`; your application handles `agent.custom_tool_use` and resolves the call | Source-reviewed and offline-tested, not deployment-verified. Keep a pending-call recovery loop |
+| Custom tool / function definitions | `resource.custom_tools`; your application handles `agent.custom_tool_use` and resolves the call | Verified in production with REST resolution and `user.custom_tool_result`. Keep a pending-call recovery loop |
 | Local text task data | A `user.message` in a Session | Read text in your application and include it in the message. Ask the Agent to create any needed files in `/workspace`; this is not a directory upload or mount |
 | Your chat UI | Stays yours | It talks to your backend, never to ZooWork. Step 9 |
 | Per-end-user secrets or accounts | **Nowhere.** Vaults and credential APIs do not exist | `references/not-supported.md` - Credentials |
@@ -37,8 +37,9 @@ platform default is current at create time; catalog defaults can rotate; select 
 
 ```ts
 const models = await zc.listModels()
+// The platform's primary chat default; persist the returned id as your explicit choice.
 const model = models.find(
-  (m) => m.model === 'litellm/gpt-5.6-terra' && m.selectable !== false,
+  (m) => m.selectable !== false && m.default_for?.includes('model'),
 )?.model
 if (!model) throw new Error('choose an explicit model returned by listModels()')
 ```
@@ -113,9 +114,10 @@ returned a flat receipt with a top-level `config_version` and no `declared` at a
 **On `tool_policy`.** The SDK keeps the object open, but source review now fixes the matching
 syntax: exact names, global `*`, or one trailing `prefix*` work in allow/deny/rule match/afterRules
 and deferred MCP pinned entries. Other `*` placements match nothing, and `alsoAllow` remains
-exact-only. The only value observed on a real agent is still `{}`; a narrowed policy has not been
-deployment-verified. After provisioning, run a turn that should be blocked and inspect
-`agent.tool` instead of treating a successful create as proof the policy took effect.
+exact-only. Production checks verified exact-name `allow` and `deny` lists removing tools from a
+turn, and `permissions: { exec: 'always_ask' }` gating a call; the wildcard forms are
+source-reviewed. After provisioning, run a turn that should be blocked and inspect `agent.tool`
+instead of treating a successful create as proof the policy took effect.
 
 ---
 
@@ -267,8 +269,8 @@ Three things to know before you rely on this:
 - **Overlap policy is skip.** A fire that lands while the previous one is still running is dropped,
   not queued. Size the cadence for the slowest run you expect.
 
-To find what a fire produced: source-reviewed `listScheduleRuns` rows can carry optional
-`session_id`. Follow it when present. Otherwise inspect `listSessions(agentId)` and match
+To find what a fire produced: on an enabled schedule, production fires produced
+`listScheduleRuns` rows carrying `session_id`. It remains optional; follow it when present. Otherwise inspect `listSessions(agentId)` and match
 `channel === 'cron'` with a `session_key` beginning `agent:{agent_id}:cron:{schedule_id}:`. And
 `triggerSchedule` answering `triggered: true` acknowledges a request, not execution. A disabled
 schedule is skipped and its run row can lack status/session linkage. Enable before triggering;
@@ -317,9 +319,7 @@ It is not authentication or a file/session access boundary. If users must not sh
 
 For streaming, your backend runs `streamEvents` and re-emits to the browser in whatever format your
 UI wants, checkpointing the last successfully processed `ev.cursor` and resuming with `{ cursor }`
-- the SDK does not reconnect for you. See `references/events-and-streaming.md` - Reconnecting. If
-this sounds like a week of work, the App Kit already implements all of it; see the SKILL.md section
-"The App Kit path" before building it yourself.
+- the SDK does not reconnect for you. See `references/events-and-streaming.md` - Reconnecting.
 
 ---
 
@@ -330,6 +330,10 @@ backend, authorize the user before every read/write, and use stable idempotency 
 provisioning. Keep shared persona and instructions in application source control; compare
 current declared state and serialize updates per Agent. Omit `expected_config_version`,
 which production rejects; reading before writing does not provide an atomic precondition.
+
+Provision serially. Concurrent `createAgent` calls in one Organization can return
+`503 platform.runtime_credentials_unavailable` before any Agent is created; retry with backoff and
+the same idempotency key instead of fanning out creates with `Promise.all`.
 
 ## Step 10. Tear down a throwaway experiment
 

@@ -17,9 +17,16 @@ from zoowork import create_zoowork_client
 
 async with create_zoowork_client() as client:
     models = await client.list_models()
-    model = next((row["model"] for row in models if row.get("selectable") is not False), None)
+    model = next(
+        (
+            row["model"]
+            for row in models
+            if row.get("selectable") is not False and "model" in (row.get("default_for") or [])
+        ),
+        None,
+    )
     if model is None:
-        raise RuntimeError("no selectable ZooWork model")
+        raise RuntimeError("no selectable default ZooWork model")
 ```
 
 `create_zoowork_client()` reads `ZOOWORK_API_KEY` and `ZOOWORK_BASE_URL`. You may instead pass the
@@ -50,13 +57,15 @@ session = await client.create_session(
 `create_agent()` takes the resource dictionary directly. This differs from TypeScript, whose
 method takes `{ resource }`. Every Session method still takes `agent_id` first. Create an Agent
 once and persist its id; create a Session for each conversation. For a temporary Agent, put cleanup
-in `finally`: attempt `stop_agent(agent_id)`, then `delete_agent(agent_id)` even if stopping
-fails, while the SDK client is still open. Remove any schedules before deleting the Agent.
+in `finally` while the SDK client is still open: remove its schedules, call
+`stop_agent(agent_id)`, then `delete_agent(agent_id)`. If stopping fails, read `get_agent` and
+retry the stop before deleting; a deleted Agent can no longer be stopped through the API.
 
 Do not choose the first model row blindly. `list_models()` can include lifecycle rows whose
 `selectable` value is false so existing Agents can continue to reference them. A new selection is
 rejected with `409 model_not_selectable`; refresh the catalog and use `expired_fallback_to` when
-present. `userTimezone` is the wire spelling for the Agent's named IANA timezone; it affects prompt
+present. For the primary chat default, use the selectable row whose `default_for` includes
+`model`, as above. `userTimezone` is the wire spelling for the Agent's named IANA timezone; it affects prompt
 context and message timestamps, not Schedule timezone.
 
 ## Events
@@ -111,8 +120,6 @@ while cursor is not None:
         agent_id,
         cursor=cursor,
         limit=100,
-        exclude_channels=["api"],
-        include_surfaces=["inbox"],
         runtime_modes=["active"],
         include_archived=False,
         include_deleted=True,
@@ -120,6 +127,15 @@ while cursor is not None:
     for row in page.sessions:
         await index(row)
     cursor = page.next_cursor
+```
+
+Sessions created through the API have `channel: "api"`, so `exclude_channels=["api"]` omits all of
+them. Pass it only when you intend to scan non-API Sessions:
+
+```python
+page = await client.list_session_page(
+    agent_id, cursor="sls1:0", exclude_channels=["api"], runtime_modes=["active"],
+)
 ```
 
 `limit` is 1–100. Runtime modes are `active`, `preview`, `authoring`, and `evaluation`. The cursor
@@ -184,8 +200,8 @@ The event alternative is `user.custom_tool_result`, using `custom_tool_use_id` o
 While waiting, the Session's `run_status` is `awaiting_approval`; inspect
 `pending_custom_tool_calls` to distinguish custom work from human approval. A REST resolution may
 return `202` and `signaled: true` while the row remains pending until the run consumes it. Terminal
-calls return `200` with `signaled: false`. This lifecycle is source-reviewed and offline-tested,
-not live deployment-verified.
+calls return `200` with `signaled: false`. This lifecycle was verified with the published Python
+SDK in production on 2026-10-03.
 
 ## Agent configuration, MCP, and channels
 
@@ -230,3 +246,7 @@ message. It also preserves `content_type`, `body_snippet`, `cf_ray`, `request_id
 
 Repeated `delete_agent` returns 404 after the first 204. For cleanup, only treat that as absence
 for a known Agent under unchanged key scope; inaccessible resources also return 404.
+
+Concurrent `create_agent` calls in one Organization can raise `ZooworkError` with status 503 and
+type `platform.runtime_credentials_unavailable`. No Agent was created; create Agents serially and
+retry with backoff and the same `idempotency_key`.
