@@ -1,6 +1,6 @@
 ---
 name: zoowork-managed-agents
-description: Build on ZooWork Managed Agents through the `@zoowork-ai/sdk` TypeScript SDK or `zoowork` Python SDK. Use whenever ZooWork, the ZooWork App Kit, a `zwp_live_`, `agt_`, or `skl_` identifier, `ZOOWORK_API_KEY`, a ZooWork Agent or Session, streaming events, custom tools, MCP, platform Skills, Environments, channels, schedules, approvals, or ZooWork API errors are mentioned. Inspect the installed SDK version and read the routed reference before writing ZooWork code.
+description: Build on ZooWork Managed Agents through the `@zoowork-ai/sdk` TypeScript SDK or `zoowork` Python SDK. Use whenever ZooWork, a `zwp_live_`, `agt_`, or `skl_` identifier, `ZOOWORK_API_KEY`, a ZooWork Agent or Session, streaming events, custom tools, MCP, platform Skills, Environments, channels, schedules, approvals, or ZooWork API errors are mentioned. Inspect the installed SDK version and read the routed reference before writing ZooWork code.
 license: MIT
 ---
 
@@ -33,7 +33,10 @@ Before writing code:
    or Python source as the final authority.
 
 If no project is present, state which package and runtime the example assumes. TypeScript requires
-Node.js 20+; Python requires Python 3.10+; the App Kit requires Node.js 22+.
+Node.js 20+; Python requires Python 3.10+. Install the published package with
+`npm install @zoowork-ai/sdk` or `python -m pip install zoowork`. The public docs and these
+references assume `@zoowork-ai/sdk` 0.10.0+ and `zoowork` 0.5.0+; if an existing project pins an
+older release, say so and ask before upgrading.
 
 ## Route by task
 
@@ -41,7 +44,7 @@ Node.js 20+; Python requires Python 3.10+; the App Kit requires Node.js 22+.
 |---|---|
 | TypeScript method, option, return shape, Agent config, model, MCP, permission, Environment, channel, schedule, approval, artifact, `exec`, or `wake` | `references/typescript-sdk.md` |
 | Python import, snake_case method, return shape, event helper, custom tool, Session cursor, Agent config, MCP, or channel | `references/python-sdk.md` |
-| Text task inputs, file outputs, read-only Database inspection, Usage, webhook registration/verification/delivery diagnostics, Run Output, or action paging/detail | `references/developer-api.md` |
+| Text task inputs, file outputs, Database availability, Usage, webhook registration/verification/delivery diagnostics, Run Output, or action paging/detail | `references/developer-api.md` |
 | Stream replies, reconnect, render events or tool calls, read/export history, or write Session events | `references/events-and-streaming.md` |
 | Host an Agent built locally, select its Skills, deploy one Agent per user, or keep one Skill synchronized across a fleet | `references/deploy-your-agent.md` — follow it in order |
 | Credentials, binary file attachment, repository mount, worker queues, cross-Agent Session listing, rollback, or another uncertain capability | `references/not-supported.md` — check before designing |
@@ -55,13 +58,12 @@ capability-boundary documents.
 | The user has | Give them |
 |---|---|
 | No API key or no running Agent | The setup flow below |
-| A key and wants a working Agent chat UI | ZooWork App Kit |
+| A key and wants a chat UI | The official SDK on their backend, relaying the Session stream to their UI; follow `references/deploy-your-agent.md` Step 9 |
 | Their own backend, UI, or Agent design | The official SDK |
 | A local persona and Skills that need hosted execution | `references/deploy-your-agent.md` |
 
-The App Kit is the `app-kit/` template in
-<https://github.com/SerendipityOneInc/zoowork-quickstarts>. Read its current README before changing
-it; do not reconstruct its setup from memory.
+Build the UI in the user's own stack. The backend holds `ZOOWORK_API_KEY`, authorizes each
+end user, and re-emits Session events to the browser.
 
 ## API key onboarding
 
@@ -77,7 +79,8 @@ credential check; it does not prove runtime readiness or authorize a billable te
 
 Use this order:
 
-1. List models and select a row whose `selectable` value is not `false`.
+1. List models and select the platform's primary chat default: the row whose `selectable` value
+   is not `false` and whose `default_for` includes `model`. Persist that explicit choice.
 2. Create the Agent once with a stable idempotency key.
 3. Persist `agent_id`.
 4. Start the Agent and wait for `desired_state` with the SDK helper.
@@ -97,8 +100,10 @@ import {
 
 const zc = createZooworkClient()
 const models = await zc.listModels()
-const model = models.find((row) => row.selectable !== false)?.model
-if (!model) throw new Error('No selectable ZooWork model')
+const model = models.find(
+  (row) => row.selectable !== false && row.default_for?.includes('model'),
+)?.model
+if (!model) throw new Error('No selectable default ZooWork model')
 
 const created = await zc.createAgent(
   { resource: { name: 'support-agent', model: { primary: model } } },
@@ -209,11 +214,18 @@ Do not run live, billable, or tenant-mutating calls merely to answer a design qu
   Ask the Agent to query via `agent_db` and return results or publish an Artifact.
 - A manual Schedule trigger requires `enabled: true`, which also enables automatic firings.
   Disabled triggers may acknowledge `triggered: true` but are skipped; this is not a test mode.
+- Create Agents one at a time within an Organization. Concurrent `createAgent` calls with the same
+  key can fail with `503 platform.runtime_credentials_unavailable`; no Agent is created, so retry
+  with backoff and the same idempotency key.
+- For raw HTTP, use the SDK, `curl`, `requests` or `httpx`. The public edge rejects Python's
+  default `urllib` User-Agent (`Python-urllib/...`) with `403` and the body `error code: 1010`.
+  That is not an API-key error; set an explicit `User-Agent` header if you must use `urllib`.
 - `exec(agentId, args)` takes argv. A non-zero process exit can still be HTTP 200.
 - Deleting an Agent does not delete its schedules. Remove schedules before deleting a throwaway
   Agent.
 - Do not mix TypeScript camelCase with Python snake_case. Treat identifiers, cursors, and unknown
   response fields as opaque.
 
-Public developer documentation is at
-<https://zoowork.ai/docs/>.
+Public developer documentation is at <https://zoowork.ai/docs/>. For machine reading, use
+<https://zoowork.ai/docs/llms.txt> (an index of per-page Markdown) or
+<https://zoowork.ai/docs/llms-full.txt> (every page in one file).

@@ -4,7 +4,7 @@ Everything an agent does inside a session is an event. You drive a session by po
 of inbound events, and you observe it by reading the outbound event log - either as a durable REST
 list or as a live SSE stream. Both return the same normalized objects, so the choice is about
 latency, not shape. Every call below needs an `agt_` id whose `status.desired_state` is already
-`running`; see `SKILL.md` - The mandatory flow if you do not have one.
+`running`; see `SKILL.md` - Minimal lifecycle if you do not have one.
 
 ---
 
@@ -97,7 +97,8 @@ Your own inputs additionally echo back as the five `PUBLIC_INPUT_EVENT_TYPES` (`
 | `user.message` (echo) | Your own message, echoed into the log. `payload.content` is a block array (`messageText` reads it); `processedAt` is `null` until the agent consumes it. | Yes - the user side of the chat |
 | `user.interrupt` / `user.tool_confirmation` / `user.custom_tool_result` / `system.message` (echo) | Your other inputs, echoed with their payloads. | Optional - render if you show them |
 
-Source-reviewed MCP errors may use `mcp_connection_failed` or `mcp_authentication_failed`.
+MCP catalog failures surface as `agent.error` with `kind: 'mcp_connection_failed'` (observed in
+production for unreachable and private-address servers) or `mcp_authentication_failed`.
 Preserve unknown `reason` values. Transient failed catalogs can expire so a later resolution
 may probe again; this is not a periodic recovery guarantee or an automatic business-operation retry.
 Healthy catalogs remain tied to the configuration.
@@ -108,10 +109,12 @@ two-sided chat.
 
 **Payload fields for the rarer types are a guide, not a contract.** The arc observed repeatedly on
 live sessions is `run.started`, `agent.lifecycle`, `agent.item`, `agent.thinking`,
-`agent.assistant`, `agent.tool` (start then end), `agent.lifecycle`, `run.finished`. `agent.approval`,
-`agent.command_output`, `agent.patch`, `agent.compaction`, `attachment.created` and
-`message.outbound` are emitted by the engine but have never been driven end to end through this
-API, so code defensively against their fields. (The echoed input events are verified: posting,
+`agent.assistant`, `agent.tool` (start then end), `agent.lifecycle`, `run.finished`. Production
+checks on 2026-10-03 also drove `agent.approval` (`requested`, then `resolved`) followed by
+`agent.tool` `end` after an allow decision or `blocked` with `deniedReason: 'approval-denied'`
+after a deny. `agent.command_output`, `agent.patch`, `agent.compaction`, `attachment.created` and
+`message.outbound` have not been driven end to end through this API, so code defensively against
+their fields. (The echoed input events are verified: posting,
 echo, `processedAt`, cursor resume and retry dedup were driven end to end on 2026-08-19.)
 
 ---
@@ -408,7 +411,7 @@ every session method, because the route is `/agents/{id}/sessions/{sid}/events`.
 
 | Type | Body | Effect |
 |---|---|---|
-| `user.message` | `content` (non-empty **string**), optional `idempotency_key` (exercised - a same-key retry converges on the same event instead of double-delivering), optional `actor: { ref }` (source-reviewed) and `attachments[]` (not exercised) | Appends a user turn and starts a run |
+| `user.message` | `content` (non-empty **string**), optional `idempotency_key` (exercised - a same-key retry converges on the same event instead of double-delivering), optional `actor: { ref }` (exercised: a valid ref is accepted, a malformed one is a 400) and `attachments[]` (not exercised) | Appends a user turn and starts a run |
 | `user.interrupt` | no other fields | Aborts the in-flight run; that run ends `run.finished` with `status: 'aborted'` |
 | `user.tool_confirmation` | `approval_id`, `decision`: `allow-once` / `allow-always` / `deny` | Resolves a pending approval |
 | `user.custom_tool_result` | `custom_tool_use_id` or `call_id`, 1–16 result `content` blocks, optional `is_error`, stable `idempotency_key` | Resolves an application-executed custom call in the same run |

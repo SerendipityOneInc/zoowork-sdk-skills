@@ -59,7 +59,7 @@ test('custom-tool tripwire requires declaration, handling, recovery and evidence
     const call = customToolUse(ev)
     await zc.resolveCustomToolCall(agentId, call.callId, { content: [{ type: 'json', value }] })
     await zc.listCustomToolCalls(agentId, { status: 'pending' })
-    // source-reviewed, not live-verified
+    // live-verified in production
   `).status, 0)
 })
 
@@ -83,7 +83,7 @@ test('Python SDK tripwires keep snake_case custom-tool and cursor methods', () =
     await client.resolve_custom_tool_call(agent_id, call.call_id, content=[{"type": "json", "value": 1}])
     cursor = "sls1:0"
     page = await client.list_session_page(agent_id, cursor=cursor, exclude_channels=["api"], runtime_modes=["active"])
-    # source-reviewed, not deployment-verified
+    # live-verified in production
   `).status, 0)
 })
 

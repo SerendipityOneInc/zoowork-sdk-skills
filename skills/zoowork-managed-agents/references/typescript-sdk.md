@@ -54,7 +54,9 @@ new create or update; otherwise the service answers `409 model_not_selectable`. 
 include `expired_at`, `expired_fallback_to`, `retired_at`, `revision`, `lifecycle_status`,
 `retire_not_before`, and `default_for`. Refresh the catalog and prefer the replacement alias when
 one is supplied. `default_for` names configuration slots such as `model`, `imageModel`,
-`imageGenerationModel` and `pdfModel`, not input modalities; do not filter it by `text`.
+`imageGenerationModel` and `pdfModel`, not input modalities; do not filter it by `text`. For the
+primary chat default, select the selectable row whose `default_for` includes `model`. The catalog
+is not ordered by preference, so do not take its first selectable row.
 
 ## Agents
 
@@ -91,7 +93,7 @@ while ownership-only changes do not. Read your declared section to reconcile unc
 only `model` leaves `persona`, `labels`, `mcp` and the rest untouched. Plain-object sections shallow-merge one level: updating
 `labels: { tier: 'paid' }` keeps an existing `labels.region`. Nested objects, arrays and scalars
 replace their values, so sending `persona.docs` replaces that whole array. `tool_policy` and
-`system_prompt` replace their entire sections. These rules are source-reviewed. All of `AgentResource` is
+`system_prompt` replace their entire sections. The labels merge and whole-section `tool_policy` replacement were verified in production. All of `AgentResource` is
 optional except `name: string`:
 
 | Field | Type | Note |
@@ -102,7 +104,7 @@ optional except `name: string`:
 | `skills` | `{ skill_id: string; version?: number \| 'latest' }[]` | explicit installs; an empty array at create opts out of automatic global Skills |
 | `include_global_skills` | `boolean` | defaults true; false disables automatic global Skills without removing explicit installs, and persists across updates and rerenders |
 | `labels` | `Record<string, string>` | what `listAgents({ labels })` filters on |
-| `tool_policy` | `Record<string, unknown>` | source-reviewed matching accepts exact names, global `*`, or one trailing `prefix*`; `alsoAllow` remains exact-only |
+| `tool_policy` | `Record<string, unknown>` | exact-name `allow`/`deny` verified in production; matching also accepts global `*` or one trailing `prefix*` (source-reviewed); `alsoAllow` remains exact-only |
 | `mcp` | `McpServerDeclaration[]` | remote HTTP only; supports exposure, opt-in runtime context, server permission defaults, and exact per-tool overrides |
 | `custom_tools` | `CustomToolDeclaration[]` | up to 32 application-executed tools: `name`, `description`, object `input_schema`, optional `timeoutMs` |
 | `sandbox` | `{ scope: 'agent' \| 'session' }` | `exec` needs `agent` |
@@ -111,7 +113,7 @@ optional except `name: string`:
 `McpServerDeclaration.exposure` is either `deferred` (also the omission default) or `direct`;
 there is no `auto`. Deferred tools load through `tool_search` / `tool_describe` and remain
 available on later turns in the same Session. Direct tools are declared on the first model
-request. These loading details are source-reviewed, not deployment-verified here.
+request. Both modes were exercised in production.
 
 Source-reviewed MCP additions:
 
@@ -157,8 +159,9 @@ unknown IDs returning 404 identically.
 **Agent list pagination is version-sensitive.** Check the installed SDK's declarations before
 using this shape. The implementation in [SDK PR #26](https://github.com/SerendipityOneInc/zoowork-sdk-typescript/pull/26)
 returns `AgentPagePromise`; SDK 0.5.2 returns `Promise<AgentRecord[]>` instead. Use a package
-release containing the pagination change for the following examples. Source and offline SDK
-tests verify this behavior; no live pagination verification is claimed here.
+release containing the pagination change for the following examples. The page object and
+`for await` iteration were exercised in production on a single page; multi-page continuation is
+source-reviewed and offline-tested.
 
 ```ts
 interface AgentListParams {
@@ -246,7 +249,7 @@ deleteSession(agentId: string, sessionId: string): Promise<void>   // soft delet
 **There is no `patchSession`, on purpose.** `PATCH` is not proxied by the gateway at all (its
 catch-all registers GET/POST/PUT/DELETE), so it answers 405. Session `metadata` is write-once, at
 `createSession`; mutable per-conversation state belongs in your own store keyed by `session_id`. The
-run outcome is `run_status` (nullable when no latest run exists, source-reviewed), and it is on **both** surfaces - `listSessions` rows and `getSession`
+run outcome is `run_status` (`null` before the first run), and it is on **both** surfaces - `listSessions` rows and `getSession`
 alike, so a read already has it and needs no second call. The decoy is `status`: `null` on
 `getSession`, absent from list rows entirely, and carrying `running` only on the `createSession`
 receipt. Asking for `history: true` populates `history?: SessionHistoryEntry[]`, the at-rest
@@ -256,8 +259,8 @@ whose `entry_type` is
 and a later read still answers `archived: true`); afterwards writes answer `409 session_archived`
 while reads keep working, so interrupt an in-flight run first or the archive races it.
 
-Source-reviewed: `pending_approvals?: number` and `pending_custom_tool_calls?: number` are counts,
-not record arrays. Use `listApprovals` or `listCustomToolCalls` for records. Filtered cursor rows can
+`pending_approvals?: number` and `pending_custom_tool_calls?: number` are counts, not record
+arrays (observed in production). Use `listApprovals` or `listCustomToolCalls` for records. Filtered cursor rows can
 also carry `runtime_mode`, `config_version`, `last_activity_at`, and opaque `list_cursor`.
 
 `listSessionPage` supports `limit` 1–100, `excludeChannels`, `includeSurfaces`, `runtimeModes`, and
@@ -265,8 +268,10 @@ also carry `runtime_mode`, `config_version`, `last_activity_at`, and opaque `lis
 `deleted: true`; the page then carries `includes_deleted: true`. Omit `cursor` to start; the SDK
 sends `sls1:0`. Continue with `next_cursor`, keep filters including `includeDeleted` identical,
 and never parse a cursor: it is bound to the Agent and filter scope. Invalid reuse returns
-`400 invalid_cursor`. Tombstones are reconciliation records, not readable Session resources. This
-is source-reviewed and offline-tested, not live-verified.
+`400 invalid_cursor`. Tombstones are reconciliation records, not readable Session resources.
+Cursor walking, `runtimeModes` and `includeDeleted` tombstones were verified in production.
+Sessions created through the API have `channel: 'api'`, so `excludeChannels: ['api']` omits all
+of them; pass it only when you intend to list non-API Sessions.
 
 ## Events
 
@@ -327,9 +332,9 @@ with 1–16 text, JSON, or base64 image content blocks. The equivalent write eve
 
 `listCustomToolCalls` only accepts a missing status or `pending`. A pending resolution returns 202
 and may carry `signaled: true` while remaining pending until the run consumes it; already terminal
-calls return 200 and `signaled: false`. Source-reviewed errors include 400 invalid input, 403 wrong
-Agent, 404 unknown call, 409 stopped workflow, and 501 unavailable result signaling. The lifecycle
-is source-reviewed and offline-tested, not live deployment-verified.
+calls return 200 and `signaled: false`. Production checks verified the lifecycle, `404 not_found`
+for an unknown call, and `400 invalid_request` for a name that shadows a built-in tool. The 403
+wrong-Agent, 409 stopped-workflow and 501 unavailable-signaling cases are source-reviewed.
 
 ## Skills
 
@@ -396,10 +401,10 @@ runtime so the same read-tweak-write round trip works from JavaScript too. The l
 expensive one: `scheduleSpec` is the only place a read puts the cadence, so echoing it back answers
 200 while leaving the old cron expression in place, and every sibling field in the body applies -
 the update looks like it worked. **To change the cadence send `schedule`, the input vocabulary.**
-`ScheduleSpec` has three kinds (`cron`, `every`, `at`). Source-reviewed interval input is
-`{ kind: 'every', everyMs: 60_000 }`, with optional `anchorMs` (epoch milliseconds).
-The old `every` field is not the wire contract: migrate explicitly rather than guessing units.
-This is a type correction, not a live-verified schedule run. Cron is five fields; macros and a `CRON_TZ=` prefix are rejected, and overlap
+`ScheduleSpec` has three kinds (`cron`, `every`, `at`). Interval input is
+`{ kind: 'every', everyMs: 60_000 }`, with optional `anchorMs` (epoch milliseconds); an enabled
+60-second interval fired automatically in production checks. The old `every` field is not the
+wire contract: migrate explicitly rather than guessing units. Cron is five fields; macros and a `CRON_TZ=` prefix are rejected, and overlap
 is fixed to skip server-side, so a fire landing on a still-running one is dropped, not queued.
 
 `createSchedule` is 409 when you re-create an existing `schedule_id` with a **different**
@@ -413,8 +418,8 @@ request was accepted, not that work ran. Read `listScheduleRuns` and follow sche
 skipped rows can lack `status` and `session_id`, so do not infer success from missing fields. Those rows mix two shapes discriminated by `source`: `temporal` rows are
 dispatch records (`scheduled_at` / `taken_at` / `workflow_id` / `temporal_run_id`) saying nothing
 about the outcome, `run_projection` rows are outcome records (`fired_at` / `status` /
-`consecutive_errors`). Source-reviewed rows may carry `session_id` when associated with a session. It is optional,
-not guaranteed for dispatch or command runs. Follow it when present; otherwise inspect sessions
+`consecutive_errors`). On an enabled schedule, production fires produced rows with `session_id`
+and `linked_by: 'dispatch_id'`. It is optional, not guaranteed for skipped, dispatch or command runs. Follow it when present; otherwise inspect sessions
 with `channel: 'cron'` and the relevant schedule prefix. Do not manufacture an association.
 
 **A cron job can carry an outcome gate.** `payload.outcome` on `ScheduleInput` (and the agent-level
@@ -437,8 +442,9 @@ The run evaluates, revises, and finalizes inside itself, and under the default p
 failed evaluation is announced. Stored verbatim - no defaults are injected into the stored copy,
 and an unknown key anywhere inside `outcome` is a 400 naming the field, so a typo cannot silently
 drop a limit. Job-level `outcome` overrides the agent default; an explicit `null` opts the job out.
-Cron fires only: heartbeats and interactive sessions never evaluate. The storage round trip is
-verified; an evaluated fire has not been observed yet.
+Cron fires only: heartbeats and interactive sessions never evaluate. A rubric outcome on an
+enabled, manually triggered schedule produced an `outcome.evaluated` webhook with
+`verdict: 'satisfied'` in production checks; the command evaluator is source-reviewed.
 
 ## Approvals
 
@@ -460,8 +466,9 @@ same approval flow: this REST resource and the `user.tool_confirmation` event yo
 with `postEvents`. Use the approval ID to resolve a decision and `tool_call_id` to associate its
 tool UI; the two IDs are not interchangeable. Production checks exercised REST and event
 confirmation with allow-once and deny.
-Source-reviewed fields include `arguments_preview?: string`, `requested_at`, `timeout_at`,
-`allowed_decisions`, `resolved_by`, `resolved_at`, `decision` and `signaled`;
+Observed pending records carry `approval_id`, `session_id`, `run_id`, `tool_call_id`,
+`tool_name`, `arguments_preview`, `status`, `requested_at`, `timeout_at` and `allowed_decisions`.
+`resolved_by`, `resolved_at`, `decision` and `signaled` are source-reviewed resolution fields;
 `created_at` is kept only for legacy compatibility. Optional fields can be absent.
 A 202 resolve with `signaled: true` can still have `status: 'pending'`: this acknowledges
 signaling, not action completion. Observe the later tool/run outcome and authorize the reviewer
@@ -488,9 +495,8 @@ activation on its own**: ordinary PUTs, skill changes and rerenders keep it. Mov
 exactly one call, `upgradeSystemPrompt`: `expected_config_version` is a required CAS (stale
 answers `409 config_version_changed` - read the projection fresh, then upgrade), omitting
 `template_version` upgrades to the currently active platform version, and the 200 receipt
-carries the NEW `config_version` because an upgrade is a config write like any other. It needs
-a gateway with fix #3387 (2026-08-14); an older deployment answers a gateway 404 on this
-route's `{id}:verb` grammar. On PUT the `system_prompt` section is replace-on-write, like
+carries the NEW `config_version` because an upgrade is a config write like any other. On PUT
+the `system_prompt` section is replace-on-write, like
 `tool_policy`, not merged. `previewSystemPrompt` assembles the exact prompt for runtime facts
 you supply without touching any session (deterministic, `transcript` always `[]`, one hash per
 template slot in `slot_hashes`); its `config_version` must be the agent's **current** one or
@@ -573,3 +579,7 @@ False or omission retains ordinary permission behavior.
 
 Agent deletion through the public API returns 204 once and 404 on repetition. A 404 can also hide
 an inaccessible resource: reconcile cleanup only for a known Agent with unchanged key scope.
+
+Concurrent `createAgent` calls in one Organization can return
+`503 platform.runtime_credentials_unavailable` with `retryable: true`. The Agent was not created;
+create Agents serially and retry with backoff and the same idempotency key.

@@ -1,7 +1,9 @@
 # Task inputs, Artifacts, Database, Usage and webhooks
 
-Read this before integrating these capability groups. These helpers are source-reviewed and
-covered by offline SDK tests. Check the installed SDK exports/source first; do not assume an
+Read this before integrating these capability groups. Production checks on 2026-10-03 exercised
+Usage, Run Output, action detail and paging, the message-to-Artifact flow, and Agent webhook
+registration, test delivery, redelivery and secret rotation with `@zoowork-ai/sdk` 0.10.x and
+`zoowork` 0.5.x. Check the installed SDK exports/source first; do not assume an
 older registry release contains a newly added method. If absent, use the corresponding documented
 HTTP route with the existing backend client configuration. Do not upgrade or make live writes
 merely to answer a capability question.

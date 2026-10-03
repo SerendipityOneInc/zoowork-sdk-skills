@@ -8,8 +8,8 @@ nearest thing that works.
 **"The SDK has no method for it" and "it does not exist" are different claims, and mixing them up
 misleads in both directions.** Before you tell a user something is missing, check
 `references/typescript-sdk.md`, `references/python-sdk.md`, or the shipped SDK declarations. The
-SDKs expose core Agent/Session lifecycle plus Artifacts, read-only Agent Database, Usage, Agent
-webhooks, Run Output and action detail/paging. Check the installed release and read
+SDKs expose core Agent/Session lifecycle plus Artifacts, Usage, Agent webhooks, Run Output and
+action detail/paging. Their Database viewer helpers exist, but the production viewer is unavailable. Check the installed release and read
 `developer-api.md`. A method does not extend the current key's Project permissions.
 
 ## Programmatic usage and cost reporting
@@ -32,10 +32,10 @@ the `callId` with `resolveCustomToolCall()` / `resolve_custom_tool_call()` or a
 work after a process restart. The Session reports `run_status: 'awaiting_approval'` while paused,
 so use the separate `pending_custom_tool_calls` count to distinguish this from human approval.
 
-**Current evidence boundary.** Types, public routes, validation, lifecycle, and error behavior are
-source-reviewed and covered by offline SDK tests. They have not been driven through a live
-deployment. A 202 result receipt with `signaled: true` can remain pending until the run consumes
-it; do not interpret it as completed execution.
+**Current evidence.** Production checks on 2026-10-03 drove the loop end to end with both SDKs:
+the request event, pending-call listing, REST resolution, `user.custom_tool_result` resolution,
+and the run continuing with the returned value. A 202 result receipt with `signaled: true` can
+remain pending until the run consumes it; do not interpret it as completed execution.
 
 **Use MCP instead when the platform should call a remote server directly.** This is real and
 has been exercised end to end for public, unauthenticated servers: the tools appear in the model's
@@ -45,7 +45,6 @@ manifest as `mcp__<server>__<tool>` and really execute.
 await zc.createAgent({
   resource: {
     name: 'support-agent',
-    model: { primary: 'litellm/gpt-5.6-terra' },
     mcp: [{
       name: 'orders',
       url: 'https://mcp.example.com/mcp',
@@ -65,14 +64,15 @@ await zc.createAgent({
 later. Remote HTTP only - `streamable-http` (the default) or `sse`; there is no stdio transport and
 no OAuth. The URL must be publicly reachable: loopback, private ranges, cloud metadata addresses
 and redirects are all refused. A server that fails its catalog probe does not fail the run; it can emit `agent.error` with `kind: 'mcp_connection_failed'` or
-`'mcp_authentication_failed'` and optional `reason` (source-reviewed; retain unknown values).
+`'mcp_authentication_failed'` and optional `reason` (`mcp_connection_failed` observed in production; retain unknown values).
 Transient failed catalogs can expire so a later resolution probes again. Healthy catalogs remain
 configuration-bound; this is not periodic auto-recovery or a guarantee that business calls retry.
 
 `exposure` is either `deferred` (also the omission default) or `direct`; there is no `auto`.
 Deferred tools load through `tool_search` / `tool_describe` and remain available on later turns in
-the same Session. `direct` declares them on the first model request. These loading details are
-source-reviewed, not deployment-verified here.
+the same Session. `direct` declares them on the first model request. Both modes were exercised in production:
+`direct` tools were called on the first request, and `deferred` tools were loaded through
+`tool_search` / `tool_describe` before the call.
 
 Runtime context and approval behavior are separate opt-ins. `context.meta` adds
 `_meta["ai.zooclaw/context"]`; `context.headers` adds `x-zooclaw-*` headers to tool execution.
@@ -83,8 +83,8 @@ it is not authentication and must not be trusted as proof of the caller.
 `permission` sets `always_ask` or `always_allow` for the server, while `tools` overrides exact
 native MCP tool names. Wildcards are not accepted in `tools`, and the map is capped at 64 entries.
 Omission is default-allow. An allow-always decision on the server wildcard covers every tool from
-that server for the Session. These are source-reviewed declarations; the approval loop below
-remains unverified.
+that server for the Session. In production checks a server-level `always_ask` produced an
+approval request that `allow-once` resolved; per-tool overrides are source-reviewed.
 
 The real limit is authenticated identity. `McpServerDeclaration.credential` names a slug for a single static
 bearer token, and the endpoint that would store the secret behind that slug answers 404 through the
@@ -150,7 +150,7 @@ anywhere in this API for a secret to be scoped to, so there is nothing for a vau
 
 **What to do instead.** Keep end-user secrets in your own backend and never let them cross into the
 platform. Make the calls that need them from your own process and pass results in as messages, as
-in option 2 above. Do not smuggle a secret into an agent's persona docs, a skill file, or session
+in the second-turn pattern above. Do not smuggle a secret into an agent's persona docs, a skill file, or session
 `metadata`: persona and skills are agent-wide and shared by every session, and any authorized key holder can read them back.
 
 ---
@@ -219,13 +219,12 @@ first and fixed at 50 rows. The separate `listSessionPage()` / `list_session_pag
 adds filters and resumable scans, but it is still per Agent.
 
 **What to do instead.** Fan out over `listAgents()` and call `listSessions` per agent - but know
-the trap before you rely on it: `listAgents` is scoped to your key's bound user *and* your
-organization, so an agent a colleague created in the same organization is fetchable by `getAgent`
-if you know its id but never appears in the list. A fan-out built on `listAgents` silently misses
-those. The durable answer is to keep your own index of agent ids and session ids in your own
-database, keyed by your own user id. You need that index anyway: the platform has no notion of your
-end-user authorization. Source-reviewed `actor.ref` can attribute messages, but it does not
-replace your session ownership index or grant access.
+the limit before you rely on it: `listAgents` applies the key's Project and owner visibility, and
+reading by ID applies the same authorization, so an Agent a colleague created can be absent from
+the list and answer 404 by ID. The durable answer is to keep your own index of agent ids and
+session ids in your own database, keyed by your own user id. You need that index anyway: the
+platform has no notion of your end-user authorization. `actor.ref` can attribute messages, but it
+does not replace your session ownership index or grant access.
 
 ---
 
@@ -271,9 +270,9 @@ registered sandbox worker.
 **What to do instead.** If the goal is reaching a private system, use an application-executed
 custom tool, run a public MCP endpoint at the edge of your network - which must be safe to expose
 unauthenticated - or keep that work in your own process between turns. If the goal is
-controlling egress, note that a sandbox's default network policy is `unrestricted`; an Environment
-with `networking: { type: 'limited', allowed_hosts: [...] }` is the way to narrow it, and it is a
-create-time decision because the Environment pin freezes on first sandbox creation.
+controlling egress, note that the managed default Environment allows `unrestricted` outbound
+access, and Project keys cannot create or select an Environment with a narrower `networking`
+policy. Keep network access that must be restricted in your own backend or a custom tool.
 
 ---
 
