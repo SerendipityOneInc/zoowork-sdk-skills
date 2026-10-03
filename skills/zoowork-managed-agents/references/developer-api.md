@@ -52,7 +52,7 @@ Copy the file into the Agent's `/workspace`, then name its path in a Session `us
 The Agent reads it with its file tools, or with its `pdf` and `image` tools. A Session message
 carries text only; there is no message attachment.
 
-If the installed SDK declares `uploadFile` (TypeScript) or `upload_file` (Python), call it:
+Call `uploadFile` (TypeScript) or `upload_file` (Python):
 
 ```ts
 import { readFile } from 'node:fs/promises'
@@ -65,7 +65,8 @@ const file = await client.uploadFile(agentId, 'input/report.pdf', await readFile
 file = await client.upload_file(agent_id, "input/report.pdf", Path("report.pdf").read_bytes())
 ```
 
-If it does not, send the bytes through `exec`, which every supported SDK release has. One argv
+A project pinned to an SDK older than the baseline lacks these methods. If it cannot upgrade,
+send the bytes through `exec`, which older releases also have. One argv
 string is capped at 128 KiB, and a longer one fails with an HTML 502, so send base64 chunks
 of at most 72,000 bytes and verify the checksum at the end:
 

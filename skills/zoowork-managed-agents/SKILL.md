@@ -35,7 +35,7 @@ Before writing code:
 If no project is present, state which package and runtime the example assumes. TypeScript requires
 Node.js 20+; Python requires Python 3.10+. Install the published package with
 `npm install @zoowork-ai/sdk` or `python -m pip install zoowork`. The public docs and these
-references assume `@zoowork-ai/sdk` 0.10.0+ and `zoowork` 0.5.0+; if an existing project pins an
+references assume `@zoowork-ai/sdk` 0.11.1+ and `zoowork` 0.6.1+; if an existing project pins an
 older release, say so and ask before upgrading.
 
 ## Route by task
