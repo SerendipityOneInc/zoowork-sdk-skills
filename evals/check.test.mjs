@@ -114,3 +114,36 @@ test('schedule session guard accepts a local alias without treating quoted prose
     Use everyMs, not every: 60. Project keys cannot upload root Skill registry ZIPs.
   `).status, 0)
 })
+
+// Reproduce the input helper that blocked the fresh CSV consumer in issue #28.
+test('CSV workflow rejects direct Files helpers and requires message input plus Artifact output', () => {
+  for (const [id, source] of [
+    [19, `const csv = await readFile('sales.csv', 'utf8');
+      const session = await zc.createSession(agentId, { initial_events: [{ type: 'user.message', content: csv + ' artifact_publish' }] });
+      if (runOutcome(event) !== 'succeeded') throw new Error();
+      const page = await zc.listArtifacts(agentId); const download = await zc.downloadArtifact(agentId, id);
+      if (total !== 300) throw new Error(); await zc.postEvents(agentId, session.session_id, {});
+      try {} finally { await zc.stopAgent(agentId); await zc.deleteAgent(agentId); }`],
+    [20, `csv = Path('sales.csv').read_text()
+      session = await client.create_session(agent_id, {"initial_events": [{"type": "user.message", "content": csv + " artifact_publish"}]})
+      if run_outcome(event) != "succeeded": raise RuntimeError()
+      page = await client.list_artifacts(agent_id)
+      download = await client.download_artifact(agent_id, artifact_id)
+      assert total == 300
+      await client.post_events(agent_id, session["session_id"], {})
+      try: pass
+      finally:
+        await client.stop_agent(agent_id)
+        await client.delete_agent(agent_id)`],
+  ]) {
+    assert.equal(check(id, source).status, 0)
+    for (const bad of [
+      'await zc.writeWorkspaceFile(agentId, "/workspace/input.csv", csv)',
+      'await client.get_workspace_file_content(agent_id, "/workspace/report.md")',
+      'await fetch(`${baseUrl}/agents/${agentId}/files`, { method: "POST" })',
+    ]) assert.equal(check(id, source + '\n' + bad).status, 1)
+    if (id === 20) assert.equal(check(id, source + '\nreceipt.get("events", [])').status, 1)
+    assert.equal(check(id, source.replace('user.message', 'input.file')).status, 1)
+    assert.equal(check(id, source.replace(/(?:downloadArtifact|download_artifact)/g, 'readOutput')).status, 1)
+  }
+})

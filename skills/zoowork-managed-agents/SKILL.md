@@ -41,7 +41,7 @@ Node.js 20+; Python requires Python 3.10+; the App Kit requires Node.js 22+.
 |---|---|
 | TypeScript method, option, return shape, Agent config, model, MCP, permission, Environment, channel, schedule, approval, artifact, `exec`, or `wake` | `references/typescript-sdk.md` |
 | Python import, snake_case method, return shape, event helper, custom tool, Session cursor, Agent config, MCP, or channel | `references/python-sdk.md` |
-| Files, read-only Database inspection, Usage, webhook registration/verification/delivery diagnostics, Run Output, or action paging/detail | `references/developer-api.md` |
+| Text task inputs, file outputs, read-only Database inspection, Usage, webhook registration/verification/delivery diagnostics, Run Output, or action paging/detail | `references/developer-api.md` |
 | Stream replies, reconnect, render events or tool calls, read/export history, or write Session events | `references/events-and-streaming.md` |
 | Host an Agent built locally, select its Skills, deploy one Agent per user, or keep one Skill synchronized across a fleet | `references/deploy-your-agent.md` — follow it in order |
 | Credentials, binary file attachment, repository mount, worker queues, cross-Agent Session listing, rollback, or another uncertain capability | `references/not-supported.md` — check before designing |
@@ -158,8 +158,10 @@ skill, which teaches a developer's assistant how to call ZooWork.
   to see the resolved assignment.
 - Project keys cannot manage the root Skill registry, root Environments, or Channels. An SDK
   method's existence does not grant those capabilities.
-- Use `persona.docs` for your own instructions and the Files helpers for workspace task inputs.
-  Writing a file is not a registered Skill upload. Do not promise a ZIP registry workflow.
+- Use `persona.docs` for standing instructions and Session messages for text task inputs.
+  Ask the Agent to create and publish output, then download it through the Artifact API.
+  Read `references/developer-api.md` for this flow. A workspace file is not a registered Skill.
+  Do not promise a ZIP registry workflow.
 - Prove runtime behavior with an authorized real turn; attachment state alone does not prove use.
 
 Follow `references/deploy-your-agent.md` for packaging, versioning, attachment verification,
@@ -169,6 +171,9 @@ per-user isolation, scheduling, UI wiring, and teardown.
 
 “The SDK has no helper” and “the platform has no public contract” are different claims. Before
 saying a feature is absent, inspect the installed SDK, public docs, `references/developer-api.md`, and `references/not-supported.md`.
+A method in SDK declarations proves its signature, not that its endpoint works in production.
+Use the documented message-to-Artifact flow for text inputs and file outputs; do not add direct
+workspace Files calls as an input or download step.
 
 Use these evidence labels:
 

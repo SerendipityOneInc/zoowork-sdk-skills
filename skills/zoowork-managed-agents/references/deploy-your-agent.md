@@ -2,7 +2,7 @@
 
 You have a persona, one or more skill directories, and a front end you can host. What you do not
 have is somewhere for the agent loop and its skills to run. This file turns that into a hosted
-Agent with persona instructions, available catalog Skills and workspace inputs. Verify
+Agent with persona instructions, available catalog Skills and Session task inputs. Verify
 configuration, then run a real turn only when authorized; keep your backend in front of it.
 
 Run the steps in order, and perform each verification - several of these calls report success in
@@ -16,9 +16,9 @@ Map local inputs onto supported Platform resources before writing calls.
 | What you built locally | Where it goes | What to know |
 |---|---|---|
 | System prompt, persona file, `CLAUDE.md` / `AGENTS.md` | `resource.persona.docs[]` on `createAgent` | An array of `{ name, content }`, not a map. Editable later with `updateAgent` |
-| A skill directory containing `SKILL.md` | Instructions in `persona.docs` and workspace task files | Project keys do not upload root Skill ZIPs. Steps 4 and 5 |
+| A skill directory containing `SKILL.md` | Instructions in `persona.docs`; task data in Session messages | Project keys do not upload root Skill ZIPs. Steps 4 and 5 |
 | Custom tool / function definitions | `resource.custom_tools`; your application handles `agent.custom_tool_use` and resolves the call | Source-reviewed and offline-tested, not deployment-verified. Keep a pending-call recovery loop |
-| A local working directory of files | `/workspace` inside the agent's sandbox | With `sandbox.scope: 'agent'` there is one `/workspace` shared by every session, so it is agent state, not conversation state |
+| Local text task data | A `user.message` in a Session | Read text in your application and include it in the message. Ask the Agent to create any needed files in `/workspace`; this is not a directory upload or mount |
 | Your chat UI | Stays yours | It talks to your backend, never to ZooWork. Step 9 |
 | Per-end-user secrets or accounts | **Nowhere.** Vaults and credential APIs do not exist | `references/not-supported.md` - Credentials |
 
@@ -148,9 +148,11 @@ request as well as the gap between polls, and throws a `ZooworkError` with
 
 New Agents receive global Skills by default. Choose catalog Skills by `name` or `skill_id`
 when creating the Agent and inspect `listAgentSkills(agentId)` afterwards. Project keys cannot
-upload root Skill ZIPs. Put custom instructions in `persona.docs`, and use
-`writeWorkspaceFile(agentId, '/workspace/input.txt', text)` for task input. A workspace file is
-not a registered Skill. Read `developer-api.md` and check installed SDK availability.
+upload root Skill ZIPs. Put custom instructions in `persona.docs`. Read local text task data
+in your application and include it in a Session `user.message`. Ask the Agent to create
+workspace files and publish outputs with `artifact_publish`; retrieve them through the Artifact
+API. A workspace file is not a registered Skill. Follow `developer-api.md` for the input and
+download flow; do not insert a direct Files helper call before opening the Session.
 
 ## Step 5. Verify the declared configuration
 

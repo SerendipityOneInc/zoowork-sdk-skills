@@ -89,7 +89,7 @@
       "id": 2,
       "name": "host-a-locally-built-agent",
       "prompt": "I built a deck-editing assistant locally with Claude Code. It's a system prompt in AGENTS.md plus two skill folders (slide-layout/ and chart-builder/, each with a SKILL.md). My front end is fine, I host that myself - what I don't have is anywhere for the agent and its skills to actually run. I have a ZooWork key. Set this up for me. I use a Platform Project key. Explain which deployment steps are supported and do not invent a root ZIP upload workflow.",
-      "expected_output": "Persona instructions, catalog Skill selection and workspace files with a clear Project-key capability boundary.",
+      "expected_output": "Persona instructions, catalog Skill selection and Session text task inputs with a clear Project-key capability boundary.",
       "files": [],
       "assertions": [
         {
@@ -126,11 +126,20 @@
           ]
         },
         {
-          "name": "provides workspace inputs or catalog selection",
+          "name": "provides Session inputs or catalog selection",
           "kind": "present",
           "patterns": [
-            "writeWorkspaceFile",
+            "user\\.message",
             "catalog"
+          ]
+        },
+        {
+          "name": "does not call direct workspace Files endpoints",
+          "kind": "absent",
+          "patterns": [
+            "\\b(?:getWorkspaceFile(?:Content)?|writeWorkspaceFile|get_workspace_file(?:_content)?|write_workspace_file)\\s*\\(",
+            "/agents/[^\\s\\x60\"\\']+/files",
+            "/files(?:/content)?(?:\\?|[\\x60\"\\'])"
           ]
         }
       ]
@@ -742,15 +751,15 @@
     {
       "id": 18,
       "name": "developer-api-closed-loop",
-      "prompt": "Using a Platform Project key and the current TypeScript SDK, write a backend integration outline that supplies text workspace input, inspects an existing Agent database, subscribes to run.finished, durably accepts signed raw webhook deliveries, reads the finished run output, and reports scoped usage. Include action recovery with explicit pagination. Do not run any live API requests.",
+      "prompt": "Using a Platform Project key and the current TypeScript SDK, write a backend integration outline that supplies text task data in a Session message, inspects an existing Agent database, subscribes to run.finished, durably accepts signed raw webhook deliveries, reads the finished run output, and reports scoped usage. Include action recovery with explicit pagination. Do not run any live API requests.",
       "expected_output": "Real SDK methods, raw-body verification and durable acceptance before acknowledgement; current key scope and opaque cursors.",
       "files": [],
       "assertions": [
         {
-          "name": "uses actual Files methods",
+          "name": "supplies task data in a Session message",
           "kind": "present",
           "patterns": [
-            "writeWorkspaceFile"
+            "user\\.message"
           ]
         },
         {
@@ -804,6 +813,205 @@
           "kind": "present",
           "patterns": [
             "getUsage"
+          ]
+        },
+        {
+          "name": "does not call direct workspace Files endpoints",
+          "kind": "absent",
+          "patterns": [
+            "\\b(?:getWorkspaceFile(?:Content)?|writeWorkspaceFile|get_workspace_file(?:_content)?|write_workspace_file)\\s*\\(",
+            "/agents/[^\\s\\x60\"\\']+/files",
+            "/files(?:/content)?(?:\\?|[\\x60\"\\'])"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "name": "typescript-csv-to-artifact",
+      "prompt": "I use the published ZooWork TypeScript SDK with a Platform Project key. Write a backend program that reads local sales.csv (month,sales; January 100, February 120, March 80), creates and starts a temporary Managed Agent, asks it to produce /workspace/report.md with a table and total, downloads the output, checks that its reported total is 300, asks a follow-up in the same Session, and cleans up the Agent even on failure. Choose the currently supported input and output flow. Do not make live calls while writing the program.",
+      "expected_output": "Local CSV text in user.message; Agent file tools and artifact_publish produce output; successful run then ready Artifact download, local content validation, same Session follow-up, finally stop/delete. No direct Files request.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "reads local CSV text",
+          "kind": "present",
+          "patterns": [
+            "readFile\\s*\\(",
+            "read_text\\s*\\("
+          ]
+        },
+        {
+          "name": "uses message task data",
+          "kind": "present",
+          "patterns": [
+            "user\\.message"
+          ]
+        },
+        {
+          "name": "does not call direct workspace Files endpoints",
+          "kind": "absent",
+          "patterns": [
+            "\\b(?:getWorkspaceFile(?:Content)?|writeWorkspaceFile|get_workspace_file(?:_content)?|write_workspace_file)\\s*\\(",
+            "/agents/[^\\s\\x60\"\\']+/files",
+            "/files(?:/content)?(?:\\?|[\\x60\"\\'])"
+          ]
+        },
+        {
+          "name": "asks the Agent to publish",
+          "kind": "present",
+          "patterns": [
+            "artifact_publish"
+          ]
+        },
+        {
+          "name": "checks run outcome",
+          "kind": "present",
+          "patterns": [
+            "runOutcome\\s*\\(",
+            "run_outcome\\s*\\("
+          ]
+        },
+        {
+          "name": "lists published Artifacts",
+          "kind": "present",
+          "patterns": [
+            "listArtifacts\\s*\\("
+          ]
+        },
+        {
+          "name": "requests an Artifact download",
+          "kind": "present",
+          "patterns": [
+            "downloadArtifact\\s*\\("
+          ]
+        },
+        {
+          "name": "validates expected total",
+          "kind": "present",
+          "patterns": [
+            "(?:assert|if\\s*\\(|if\\s+)[\\s\\S]{0,200}300"
+          ]
+        },
+        {
+          "name": "posts a follow-up",
+          "kind": "present",
+          "patterns": [
+            "postEvents\\s*\\("
+          ]
+        },
+        {
+          "name": "cleans up even on failure",
+          "kind": "present",
+          "patterns": [
+            "finally"
+          ]
+        },
+        {
+          "name": "stops before deleting",
+          "kind": "order",
+          "patterns": [
+            "stopAgent\\s*\\(",
+            "deleteAgent\\s*\\("
+          ]
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "name": "python-csv-to-artifact",
+      "prompt": "I use the published ZooWork Python SDK with a Platform Project key. Write a backend program that reads local sales.csv (month,sales; January 100, February 120, March 80), creates and starts a temporary Managed Agent, asks it to produce /workspace/report.md with a table and total, downloads the output, checks that its reported total is 300, asks a follow-up in the same Session, and cleans up the Agent even on failure. Choose the currently supported input and output flow. Do not make live calls while writing the program.",
+      "expected_output": "Local CSV text in user.message; Agent file tools and artifact_publish produce output; successful run then ready Artifact download, local content validation, same Session follow-up, finally stop/delete. No direct Files request.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "reads local CSV text",
+          "kind": "present",
+          "patterns": [
+            "readFile\\s*\\(",
+            "read_text\\s*\\("
+          ]
+        },
+        {
+          "name": "uses message task data",
+          "kind": "present",
+          "patterns": [
+            "user\\.message"
+          ]
+        },
+        {
+          "name": "does not call direct workspace Files endpoints",
+          "kind": "absent",
+          "patterns": [
+            "\\b(?:getWorkspaceFile(?:Content)?|writeWorkspaceFile|get_workspace_file(?:_content)?|write_workspace_file)\\s*\\(",
+            "/agents/[^\\s\\x60\"\\']+/files",
+            "/files(?:/content)?(?:\\?|[\\x60\"\\'])"
+          ]
+        },
+        {
+          "name": "asks the Agent to publish",
+          "kind": "present",
+          "patterns": [
+            "artifact_publish"
+          ]
+        },
+        {
+          "name": "checks run outcome",
+          "kind": "present",
+          "patterns": [
+            "runOutcome\\s*\\(",
+            "run_outcome\\s*\\("
+          ]
+        },
+        {
+          "name": "lists published Artifacts",
+          "kind": "present",
+          "patterns": [
+            "list_artifacts\\s*\\("
+          ]
+        },
+        {
+          "name": "requests an Artifact download",
+          "kind": "present",
+          "patterns": [
+            "download_artifact\\s*\\("
+          ]
+        },
+        {
+          "name": "validates expected total",
+          "kind": "present",
+          "patterns": [
+            "(?:assert|if\\s*\\(|if\\s+)[\\s\\S]{0,200}300"
+          ]
+        },
+        {
+          "name": "posts a follow-up",
+          "kind": "present",
+          "patterns": [
+            "post_events\\s*\\("
+          ]
+        },
+        {
+          "name": "cleans up even on failure",
+          "kind": "present",
+          "patterns": [
+            "finally"
+          ]
+        },
+        {
+          "name": "stops before deleting",
+          "kind": "order",
+          "patterns": [
+            "stop_agent\\s*\\(",
+            "delete_agent\\s*\\("
+          ]
+        },
+        {
+          "name": "does not treat Python event receipts as a TypeScript object",
+          "kind": "absent",
+          "patterns": [
+            "\\b(?:posted|receipts?)\\.get\\s*\\(\\s*[\"\\x27]events[\"\\x27]",
+            "\\b(?:posted|receipts?)\\s*\\[\\s*[\"\\x27]events[\"\\x27]\\s*\\]"
           ]
         }
       ]
