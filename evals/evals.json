@@ -752,7 +752,7 @@
       "id": 18,
       "name": "developer-api-closed-loop",
       "prompt": "Using a Platform Project key and the current TypeScript SDK, write a backend integration outline that supplies text task data in a Session message, inspects an existing Agent database, subscribes to run.finished, durably accepts signed raw webhook deliveries, reads the finished run output, and reports scoped usage. Include action recovery with explicit pagination. Do not run any live API requests.",
-      "expected_output": "Real SDK methods, raw-body verification and durable acceptance before acknowledgement; current key scope and opaque cursors.",
+      "expected_output": "Supported message-to-Artifact flow, unavailable production viewer stated explicitly, raw-body webhook verification and durable acceptance, scoped Usage and action pagination.",
       "files": [],
       "assertions": [
         {
@@ -763,10 +763,10 @@
           ]
         },
         {
-          "name": "uses read-only Database helper",
-          "kind": "present",
+          "name": "does not call the unavailable Database viewer",
+          "kind": "absent",
           "patterns": [
-            "getAgentDatabase"
+            "\\.(?:getAgentDatabase(?:Rows)?|get_agent_database(?:_rows)?)\\s*\\("
           ]
         },
         {
@@ -1012,6 +1012,97 @@
           "patterns": [
             "\\b(?:posted|receipts?)\\.get\\s*\\(\\s*[\"\\x27]events[\"\\x27]",
             "\\b(?:posted|receipts?)\\s*\\[\\s*[\"\\x27]events[\"\\x27]\\s*\\]"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "name": "production-contract-boundaries",
+      "prompt": "We are shipping a hackathon backend on the published @zoowork-ai/sdk 0.10.0 with a Platform Project key. Give TypeScript snippets and integration decisions for: (1) supplying local CSV text and reading the Agent database sales table from our app; (2) creating a disabled daily schedule, manually testing it, then enabling recurring execution; (3) rendering a tool waiting for approval and a denied tool; (4) sending a second message in the same Session without printing the first answer again, including what to do after restart if no stream cursor was saved; (5) retrying Agent deletion after a lost response; (6) two workers updating the Agent with optimistic concurrency; (7) handling an invalid Usage range or page size. Use only currently supported behavior, and say when the requested flow cannot be provided. Do not run live requests.",
+      "expected_output": "Message inputs, Agent-mediated database reads, enabled schedules, requested approvals vs terminal blocked, cursor-preserving second turn and explicit missing-cursor boundary, scoped delete reconciliation, no Agent CAS promise, both Usage validation statuses.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "does not call unavailable Database viewer",
+          "kind": "absent",
+          "patterns": [
+            "\\.(?:getAgentDatabase(?:Rows)?|get_agent_database(?:_rows)?)\\s*\\("
+          ]
+        },
+        {
+          "name": "does not call direct workspace Files",
+          "kind": "absent",
+          "patterns": [
+            "\\.(?:getWorkspaceFile(?:Content)?|writeWorkspaceFile)\\s*\\("
+          ]
+        },
+        {
+          "name": "uses Agent database tool as an alternative",
+          "kind": "present",
+          "patterns": [
+            "agent_db"
+          ]
+        },
+        {
+          "name": "shows enabled Schedule configuration",
+          "kind": "present",
+          "patterns": [
+            "enabled\\s*:\\s*true"
+          ]
+        },
+        {
+          "name": "observes approval requests",
+          "kind": "present",
+          "patterns": [
+            "agent\\.approval[\\s\\S]{0,500}requested",
+            "requested[\\s\\S]{0,500}agent\\.approval"
+          ]
+        },
+        {
+          "name": "describes blocked as rejection or terminal",
+          "kind": "present",
+          "patterns": [
+            "blocked[\\s\\S]{0,200}(?:terminal|reject|denied)",
+            "(?:terminal|reject|denied)[^\\n]{0,100}blocked"
+          ]
+        },
+        {
+          "name": "resumes using a stream cursor",
+          "kind": "present",
+          "patterns": [
+            "streamEvents\\([\\s\\S]{0,250}\\bcursor\\b"
+          ]
+        },
+        {
+          "name": "does not invent a current-tail API",
+          "kind": "present",
+          "patterns": [
+            "(?:[Nn]o|[Nn]ot)[^\\n]{0,100}(?:\\btail\\b|cursor helper)",
+            "(?:\\btail\\b|cursor helper)[^\\n]{0,100}(?:unavailable|not|no)",
+            "(?:\\u6ca1\\u6709|\\u4e0d\\u5b58\\u5728)[^\\n]{0,50}(?:\\btail\\b|cursor helper)"
+          ]
+        },
+        {
+          "name": "accounts for deletion 404",
+          "kind": "present",
+          "patterns": [
+            "(?:delet|cleanup)[\\s\\S]{0,500}404",
+            "404[\\s\\S]{0,250}(?:delet|cleanup)"
+          ]
+        },
+        {
+          "name": "states unavailable Agent update precondition",
+          "kind": "present",
+          "patterns": [
+            "invalid_declared_key"
+          ]
+        },
+        {
+          "name": "handles untyped Usage validation",
+          "kind": "present",
+          "patterns": [
+            "422"
           ]
         }
       ]

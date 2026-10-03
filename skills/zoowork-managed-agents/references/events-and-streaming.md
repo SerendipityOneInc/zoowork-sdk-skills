@@ -379,12 +379,11 @@ Three rules, each of which is a bug someone has already shipped:
    sharing a `toolCallId`. When calls run concurrently the `start` and `end` of one call are
    separated by events belonging to others, so a renderer that assumes the next `agent.tool` closes
    the previous one attributes results to the wrong tool. Keep a `Map<string, ToolCall>` keyed by
-   `toolCallId` and delete on `end`.
-2. **`blocked` is pending, not complete.** It means an approval gate stopped the call *before*
-   execution; the matching `agent.approval` event carries the request, and an `end` still follows
-   once it resolves. Rendering `blocked` as finished reports work that never happened - `start` and
-   `blocked` are both still in flight. Human-in-the-loop approval has not been proven end to end;
-   read `references/not-supported.md` - End-to-end human approval before designing around it.
+   `toolCallId` and delete on `end` or `blocked`.
+2. **`blocked` is terminal, not pending.** Policy rejected the call before execution; no
+   `end` follows for that call. Remove it from the pending map and render it as rejected,
+   not successful. Approval waiting emits `agent.approval` / `requested`; `resolved` ends
+   the wait, after which the tool/run outcome still needs observation.
 3. **`isError` does not fail the run.** An `agent.tool` `end` with `isError: true` is routinely
    followed by `run.finished` with `status: 'succeeded'` - the model saw the tool error, worked
    around it, and answered. The inverse also holds: do not infer success from the absence of tool
@@ -447,10 +446,10 @@ and `user.message` is the only type the API reference says it takes there; the S
 (`OutboundEvent[]`) is wider than the route. Keep it to the opening message and post everything else
 with `postEvents` once the create returns.
 
-Nothing on the approval path has been observed end to end - no `agent.approval` event has been
-recorded and every recorded `approvals` list is empty - so the id's field name on both sides of the
-`user.tool_confirmation` round trip is unverified. Read `references/not-supported.md` - End-to-end
-human approval before writing this.
+Production checks exercised approval resolution through REST and `user.tool_confirmation`,
+including allow-once and deny. Waiting uses `agent.approval` / `requested`, not tool `blocked`.
+The event payload uses `approvalId`; the outbound confirmation uses `approval_id`.
+Read `references/not-supported.md` - Human approval signals for rendering and recovery.
 
 ---
 
@@ -474,3 +473,19 @@ which is durable, resumable and verified - and if a caller genuinely needs token
 say that this API does not offer it in a supported form rather than shipping the delta lane.
 
 For the full method list and return shapes, read `references/typescript-sdk.md` - Events.
+
+## Subsequent turns and recovery without a cursor
+
+For serial turns, save the last processed `ev.cursor` with the Session ID before sending the
+next message, then call `streamEvents(agentId, sessionId, { cursor: savedCursor })`.
+Never fall back to no cursor for an existing conversation and stop at the first `run.finished`:
+that is the old first turn, not the new answer. Correlate runs when multiple runs can overlap.
+
+REST event objects and `postEvents` receipts have no cursor. The last REST page's nextCursor
+is null. There is no current-tail helper; do not derive a cursor from seq or use the legacy
+`after` lane. If the checkpoint was lost, replay and reconstruct state using recorded inputs
+and runs, or explicitly start a new conversation. A new Session does not retain the old context.
+
+A retained, verified `run.finished` webhook can contain `data.event_cursor`. Use it as a
+checkpoint only after processing the corresponding turn: resuming after it skips prior output.
+This is a delivered event correlation, not a query for the current tail.

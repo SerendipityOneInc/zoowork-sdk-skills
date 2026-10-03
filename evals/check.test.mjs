@@ -22,6 +22,14 @@ function check(id, source) {
   }
 }
 
+test('production boundary check does not confuse detail with tail', () => {
+  const tailCheck = source => check(21, source).result.checks
+    .find(item => item.text === 'does not invent a current-tail API').passed
+  assert.equal(tailCheck('Read approval detail; do not guess IDs.'), false)
+  assert.equal(tailCheck('There is no current-tail helper.'), true)
+  assert.equal(tailCheck('The current tail helper is unavailable.'), true)
+})
+
 test('complete-export tripwire rejects bounded history and a single page', () => {
   for (const source of [
     'const s = await zc.getSession(a, s, { history: true, limit: 500 }); await writeFile(path, JSON.stringify(s.history))',

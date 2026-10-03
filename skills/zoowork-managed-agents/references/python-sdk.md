@@ -207,7 +207,7 @@ selectors separately support an exact name, global `*`, or one trailing `prefix*
 
 Project keys cannot bind Channels or administer root Skills and Environments; these routes
 return `404 service_api.not_found`. Use `list_agent_skills` to inspect attached catalog Skills.
-Read `developer-api.md` for text task inputs, file outputs, read-only Database, Usage, Run Output,
+Read `developer-api.md` for text task inputs, file outputs, Database availability, Usage, Run Output,
 action detail/paging and Agent webhook management. Check installed source before using new methods.
 
 ## Method groups
@@ -217,7 +217,8 @@ action detail/paging and Agent webhook management. Check installed source before
 - Session create input accepts `runtime_mode: "active"` and `idle_compaction` alongside initial
   events and metadata. Explicit active pins the configuration at creation; omission resolves
   active configuration on later turns.
-- Agent updates accept `expected_config_version`; stale writes return `409 active_config_changed`.
+- Production Agent updates reject `expected_config_version` with `400 invalid_declared_key`.
+  Omit it and serialize writes in your backend; read-then-write is not atomic.
 - MCP exact tool overrides accept `requireConfirmation` as true, false or omitted. True requires `permission: "always_ask"` and offers allow-once or deny. Runtime
   context does not authenticate the caller.
 
@@ -226,3 +227,6 @@ action detail/paging and Agent webhook management. Check installed source before
 Every non-success response raises `ZooworkError`. Match `error.status` and `error.type`, never its
 message. It also preserves `content_type`, `body_snippet`, `cf_ray`, `request_id`, and
 `retryable`. Always close the async client, preferably through `async with`.
+
+Repeated `delete_agent` returns 404 after the first 204. For cleanup, only treat that as absence
+for a known Agent under unchanged key scope; inaccessible resources also return 404.

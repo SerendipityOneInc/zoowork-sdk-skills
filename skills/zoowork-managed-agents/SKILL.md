@@ -131,12 +131,15 @@ payloads retain public wire spelling where documented.
 ## Session and event rules
 
 - The event log contains user inputs, assistant replies, tool activity, and run completion.
-- Resume with each event's opaque `cursor`; do not derive it from `seq`.
+- Resume every subsequent turn with the last processed event's opaque `cursor`; do not derive
+  it from `seq`. Without a cursor the stream replays old turns. REST events and send receipts
+  have no cursor, and the final REST continuation is null. There is no current-tail helper.
 - Checkpoint only after processing the event. Cursor resume does not make application side effects
   exactly-once.
 - `listEvents()` returns one page and drops pagination metadata. Use `listAllEvents()` for the full
   history or `listEventsPage()` for explicit cursor pagination.
-- `toolCall().phase` is `start`, `end`, or `blocked`. A blocked call has not run.
+- `toolCall().phase` is `start`, `end`, or `blocked`. `blocked` is terminal policy rejection
+  without execution; no `end` follows. Approval waiting is `agent.approval` / `requested`.
 - A failed tool call does not necessarily fail the run. `runOutcome()` is the authority.
 - Retried writes should use a stable `idempotency_key`.
 - A valid `user.interrupt` with no active run can return `accepted: false`; that is a normal no-op.
@@ -189,13 +192,21 @@ Do not run live, billable, or tenant-mutating calls merely to answer a design qu
 - Wait on `desired_state`, never `actual_state`; the latter is a chat-channel health projection.
 - Platform uses a managed Environment. Project keys do not administer root Environments.
 - `createAgent` and `getAgent` return different shapes.
-- `updateAgent` accepts `expected_config_version` for atomic optimistic concurrency; stale
-  writes return `409 active_config_changed`. A version is not an idempotency receipt or rollback handle.
+- Production Agent updates reject `expected_config_version` with `400 invalid_declared_key`.
+  Omit it for ordinary last-write-wins updates and serialize competing writes in your backend.
+  A GET followed by PUT is not atomic. The separate system-prompt upgrade precondition works.
 - MCP exposure, runtime context, and permission policy are separate controls.
 - Tool-policy wildcards allow an exact name, global `*`, or one trailing `prefix*` only.
 - There is no public credential store for an end user's secret.
-- Match `ZooworkError.status` and `.type`, not message text.
-- A cross-tenant or unknown identifier can return 404 rather than 403.
+- Match `ZooworkError.status` and `.type`, not message text. Usage validation can return 422
+  with no business type; invalid timezone can return 400 `usage.invalid_query`.
+- A cross-tenant or unknown identifier can return 404 rather than 403. Repeated Agent deletion
+  also returns 404 after the first 204; treat it as cleanup complete only for your known Agent
+  with unchanged key scope.
+- The production Database viewer is unavailable. Do not call its SDK helpers or HTTP routes.
+  Ask the Agent to query via `agent_db` and return results or publish an Artifact.
+- A manual Schedule trigger requires `enabled: true`, which also enables automatic firings.
+  Disabled triggers may acknowledge `triggered: true` but are skipped; this is not a test mode.
 - `exec(agentId, args)` takes argv. A non-zero process exit can still be HTTP 200.
 - Deleting an Agent does not delete its schedules. Remove schedules before deleting a throwaway
   Agent.
@@ -203,4 +214,4 @@ Do not run live, billable, or tenant-mutating calls merely to answer a design qu
   response fields as opaque.
 
 Public developer documentation is at
-<https://github.com/SerendipityOneInc/zoowork-agents-docs>.
+<https://zoowork.ai/docs/>.

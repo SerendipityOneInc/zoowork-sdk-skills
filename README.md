@@ -1,6 +1,6 @@
 # ZooWork Skills
 
-Skills that teach AI coding assistants how to build on [ZooWork Managed Agents](https://github.com/SerendipityOneInc/zoowork-agents-docs).
+Skills that teach AI coding assistants how to build on [ZooWork Managed Agents](https://zoowork.ai/docs/).
 
 Install this skill into Claude Code, Cursor, or any other assistant that reads
 [Agent Skills](https://github.com/anthropics/skills). It routes each task to the relevant reference

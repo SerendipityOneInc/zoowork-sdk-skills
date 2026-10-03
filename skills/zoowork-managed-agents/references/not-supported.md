@@ -192,28 +192,18 @@ answer falls short. Each iteration is one turn, and the loop lives in your code.
 
 ---
 
-## End-to-end human approval
+## Human approval signals
 
-**Be precise here, because the pieces exist and the loop does not.** Present separately: an
-`agent.approval` event type; `agent.tool` events with `phase: 'blocked'`, meaning the call is
-parked and has **not** run; a write-side `user.tool_confirmation` event; and a REST approvals
-resource with `listApprovals(agentId, { status: 'pending' })` and `resolveApproval(agentId,
-approvalId, { decision })` where `decision` is one of `allow-once`, `allow-always`, `deny`.
+The approval loop is available through REST resolution and `user.tool_confirmation`.
+Waiting emits `agent.approval` with `phase: 'requested'`; show its approval and tool IDs to
+an authorized reviewer. Resolve only an allowed decision from `allowed_decisions`.
+`phase: 'resolved'` ends the approval wait but does not prove execution succeeded. A 202
+REST resolution with `signaled: true` may still show pending until the run consumes it.
+Use `listApprovals(agentId, { status: 'pending' })` to recover pending decisions after restart.
 
-**What is known.** Recorded approval lists are empty; the end-to-end loop has not been verified.
-The source-reviewed SDK contract includes `requested_at`, optional string `arguments_preview`,
-`allowed_decisions`, timeout/resolution fields and a resolve receipt. A 202 response with
-`signaled: true` may still be `pending`; it does not prove the tool ran. `created_at` is legacy
-compatibility, not the request timestamp to depend on. Where unsupported, the route returns
-`501 not_configured`. The list filter accepts only omitted status or `pending`.
-Deployment support, REST/event round-trip behavior and turn-budget handling need separate checks.
-An `allow-always` decision resolved against an MCP server wildcard applies to all of that server's
-tools for the Session, not just the tool that first prompted. Use exact per-tool overrides where
-that broader grant is unsafe.
-
-**Keep dangerous actions gated until verified.** If a product cannot depend on this path, let the
-turn finish, show its proposed action to a reviewer in your own product, then post the approved
-instruction as a new message. Do not describe unverified budget behavior as a measured fact.
+`agent.tool` / `blocked` is terminal policy rejection without execution. It is not an
+approval request, and no `end` follows for that blocked call. Do not wait for blocked to
+render an approval UI. Use exact per-tool overrides when a server-wide grant is too broad.
 
 ---
 
@@ -259,9 +249,10 @@ and roll back when it regresses.
 
 There is no public configuration-history or rollback endpoint. Explicit `runtime_mode: "active"`
 on Session creation pins the current active configuration. Omission resolves active configuration
-on later turns. `expected_config_version` is an optional atomic update precondition; stale
-updates fail with `409 active_config_changed`. Keep prior configuration in your own source
-control for rollback and reconcile declared values before retrying uncertain writes.
+on later turns. Production rejects `expected_config_version` on Agent updates with
+`400 invalid_declared_key`; omit it and serialize competing writes in the application.
+Read-then-write does not provide atomic concurrency. Keep prior configuration in source
+control and reconcile declared values before retrying uncertain writes.
 
 ---
 
@@ -303,3 +294,13 @@ the exact client signatures. Prefer them over anything recalled, then use
 `references/typescript-sdk.md` or `references/python-sdk.md` for the reviewed behavior and
 verification status. When a capability is absent from both the selected SDK and these references,
 say that it is unverified rather than guessing in either direction.
+
+## Database viewer and paused schedules
+
+The production database viewer is unavailable, even though the SDK exposes catalog/rows
+methods. Use the Agent's `agent_db` tool through a Session and return data in its response or
+an Artifact. Changing pagination or creating a database does not enable the viewer.
+
+A disabled Schedule cannot be manually executed. Its trigger receipt can say `triggered: true`
+while work is skipped. Enable it first, understanding that automatic firings also become
+active, or test the task in an ordinary Session. A receipt is not an execution result.
