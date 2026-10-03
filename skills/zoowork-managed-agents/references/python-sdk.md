@@ -49,7 +49,9 @@ session = await client.create_session(
 
 `create_agent()` takes the resource dictionary directly. This differs from TypeScript, whose
 method takes `{ resource }`. Every Session method still takes `agent_id` first. Create an Agent
-once and persist its id; create a Session for each conversation.
+once and persist its id; create a Session for each conversation. For a temporary Agent, put cleanup
+in `finally`: attempt `stop_agent(agent_id)`, then `delete_agent(agent_id)` even if stopping
+fails, while the SDK client is still open. Remove any schedules before deleting the Agent.
 
 Do not choose the first model row blindly. `list_models()` can include lifecycle rows whose
 `selectable` value is false so existing Agents can continue to reference them. A new selection is
@@ -82,6 +84,20 @@ Five write-side types exist: `user.message`, `user.interrupt`, `user.tool_confir
 `user.custom_tool_result`, and `system.message`. Give retryable events a stable
 `idempotency_key`. A successful `user.interrupt` when nothing runs can return
 `accepted: false`; that is a normal no-op, not an exception.
+
+For a follow-up, reuse the same Session and stream from the last processed cursor:
+
+```python
+receipts = await client.post_events(agent_id, session["session_id"], [{
+    "type": "user.message", "content": "Continue with the same task.",
+    "idempotency_key": "task-followup-1",
+}])
+if len(receipts) != 1 or receipts[0].get("accepted") is not True:
+    raise RuntimeError("Follow-up was not accepted")
+```
+
+`post_events()` returns a list of per-event receipt dictionaries, not an object with an
+`events` field. Check acceptance before resuming `stream_events(..., cursor=cursor)`.
 
 ## Filtered Session pages
 
@@ -191,8 +207,8 @@ selectors separately support an exact name, global `*`, or one trailing `prefix*
 
 Project keys cannot bind Channels or administer root Skills and Environments; these routes
 return `404 service_api.not_found`. Use `list_agent_skills` to inspect attached catalog Skills.
-Read `developer-api.md` for Files, read-only Database, Usage, Run Output, action detail/paging
-and Agent webhook management. Check installed source before using new methods.
+Read `developer-api.md` for text task inputs, file outputs, read-only Database, Usage, Run Output,
+action detail/paging and Agent webhook management. Check installed source before using new methods.
 
 ## Method groups
 

@@ -1,4 +1,4 @@
-# Files, Database, Usage and webhooks
+# Task inputs, Artifacts, Database, Usage and webhooks
 
 Read this before integrating these capability groups. These helpers are source-reviewed and
 covered by offline SDK tests. Check the installed SDK exports/source first; do not assume an
@@ -10,9 +10,6 @@ merely to answer a capability question.
 
 | TypeScript | Python | Public contract |
 |---|---|---|
-| `getWorkspaceFile(agentId, path, { showHidden? })` | `get_workspace_file(agent_id, path, show_hidden=...)` | GET Agent files: text file or directory entries |
-| `writeWorkspaceFile(agentId, path, content)` | `write_workspace_file(agent_id, path, content)` | POST Agent files: text write |
-| `getWorkspaceFileContent(agentId, path, { download? })` | `get_workspace_file_content(agent_id, path, download=...)` | GET files/content: Uint8Array / bytes |
 | `getAgentDatabase(agentId)` | `get_agent_database(agent_id)` | Read-only database catalog |
 | `getAgentDatabaseRows(agentId, table, { limit?, offset? })` | `get_agent_database_rows(agent_id, table, limit=..., offset=...)` | Read-only rows; limit 1–100, offset nonnegative |
 | `getUsage({ range?, groupBy?, view?, perPage?, snapshot?, cursor? })` | `get_usage(range=..., group_by=..., view=..., per_page=..., snapshot=..., cursor=...)` | GET /service/v1/usage; current key scope |
@@ -22,9 +19,7 @@ merely to answer a capability question.
 | `listApprovalPage(agentId, { status?, sessionId?, cursor?, limit? })` | `list_approval_page(agent_id, status=..., session_id=..., cursor=..., limit=...)` | Object with approvals, has_more, next_cursor |
 | `listCustomToolCallPage(agentId, opts)` | `list_custom_tool_call_page(agent_id, **opts)` | Object with custom_tool_calls, has_more, next_cursor |
 
-File reads derive owner/org selectors from the Agent projection. Do not accept caller-supplied
-selectors to widen authorization. Text writes do not upload arbitrary binary inputs. Database
-reads do not provision a missing database: handle `status: 'not_provisioned'` normally.
+Database reads do not provision a missing database: handle `status: 'not_provisioned'` normally.
 
 Use `range: '24h' | '7d' | '30d'`, `groupBy: 'session' | 'api_key'`, and
 `view: 'groups' | 'records' | 'both'` for Usage. Other filters include session/key/root-session,
@@ -41,6 +36,105 @@ acceptance; it does not prove the run consumed the result.
 Run Output contains text and artifact references. An artifact_id can be null; download only a
 non-null ID through the Artifact API. Follow next_cursor while has_more is true. A running run
 can have no next page and still be incomplete: require output_complete=true for a complete result.
+
+## Text task inputs and file outputs
+
+Read local text data in your application and include it in a Session `user.message`. Ask the
+Agent to create files in `/workspace`, verify their contents and publish output using its
+in-loop `artifact_publish` tool. The application downloads the published Artifact.
+This is the flow in the public [Files guide](https://zoowork.ai/docs/build/files.md).
+Direct workspace Files endpoints are outside the currently supported public workflow; an SDK
+method or an offline test does not establish production availability. Do not use direct Files
+calls as a setup, input, inspection or output-download step.
+
+These examples reuse a running Agent and an initialized SDK client. Keep input text within
+the documented message limits; this is not a binary upload, repository mount or registered
+Skill upload. `persona.docs` holds standing instructions, rather than per-task data.
+
+```ts
+import { readFile, writeFile } from 'node:fs/promises'
+import { isRunFinished, runOutcome } from '@zoowork-ai/sdk'
+
+const csvText = await readFile('sales.csv', 'utf8')
+const task = `Use the CSV below to create /workspace/report.md with a sales table and total.
+Read the report back to verify it, then publish it with artifact_publish.
+CSV data follows:\n${csvText}`
+const session = await zc.createSession(agentId, {
+  initial_events: [{ type: 'user.message', content: task }],
+})
+for await (const event of zc.streamEvents(agentId, session.session_id)) {
+  if (isRunFinished(event)) {
+    if (runOutcome(event) !== 'succeeded') throw new Error(`run ${runOutcome(event)}`)
+    break
+  }
+}
+
+let artifactId: string | undefined
+for (let page = 1; ; page += 1) {
+  const result = await zc.listArtifacts(agentId, {
+    sessionId: session.session_id, sourcePath: '/workspace/report.md', page, limit: 50,
+  })
+  artifactId = result.artifacts.find((item) => item.status === 'ready')?.artifact_id
+  if (artifactId || !result.has_more) break
+}
+if (!artifactId) throw new Error('No ready report Artifact')
+const download = await zc.downloadArtifact(agentId, artifactId)
+if (!download.url) throw new Error('No Artifact download URL')
+const response = await fetch(download.url)
+if (!response.ok) throw new Error(`Artifact download failed: ${response.status}`)
+await writeFile('published-report.md', Buffer.from(await response.arrayBuffer()))
+```
+
+```python
+from pathlib import Path
+import httpx
+from zoowork import is_run_finished, run_outcome
+
+csv_text = Path("sales.csv").read_text(encoding="utf-8")
+task = (
+    "Use the CSV below to create /workspace/report.md with a sales table and total. "
+    "Read the report back to verify it, then publish it with artifact_publish. "
+    f"CSV data follows:\n{csv_text}"
+)
+session = await client.create_session(agent_id, {
+    "initial_events": [{"type": "user.message", "content": task}],
+})
+async for event in client.stream_events(agent_id, session["session_id"]):
+    if is_run_finished(event):
+        if run_outcome(event) != "succeeded":
+            raise RuntimeError(f"run {run_outcome(event)}")
+        break
+
+artifact_id = None
+page = 1
+while True:
+    result = await client.list_artifacts(
+        agent_id, session_id=session["session_id"], source_path="/workspace/report.md",
+        page=page, limit=50,
+    )
+    artifact_id = next(
+        (item["artifact_id"] for item in result["artifacts"] if item.get("status") == "ready"),
+        None,
+    )
+    if artifact_id is not None or not result["has_more"]:
+        break
+    page += 1
+if artifact_id is None:
+    raise RuntimeError("No ready report Artifact")
+download = await client.download_artifact(agent_id, artifact_id)
+if not download.get("url"):
+    raise RuntimeError("No Artifact download URL")
+async with httpx.AsyncClient(follow_redirects=True) as http:
+    response = await http.get(download["url"])
+    response.raise_for_status()
+    Path("published-report.md").write_bytes(response.content)
+```
+
+A successful run is not proof of publication or correct output. Inspect the ready Artifact
+and validate the downloaded file against the task's acceptance criteria. Do not copy the
+ZooWork API key into the download request or log the access URL. Artifacts are separately
+published copies; downloading one does not inspect the current workspace file. Follow the
+language reference for Artifact signatures and `not-supported.md` for attachment boundaries.
 
 ## Agent webhook management
 

@@ -8,7 +8,7 @@ nearest thing that works.
 **"The SDK has no method for it" and "it does not exist" are different claims, and mixing them up
 misleads in both directions.** Before you tell a user something is missing, check
 `references/typescript-sdk.md`, `references/python-sdk.md`, or the shipped SDK declarations. The
-SDKs expose core Agent/Session lifecycle plus Files, read-only Agent Database, Usage, Agent
+SDKs expose core Agent/Session lifecycle plus Artifacts, read-only Agent Database, Usage, Agent
 webhooks, Run Output and action detail/paging. Check the installed release and read
 `developer-api.md`. A method does not extend the current key's Project permissions.
 
@@ -157,14 +157,18 @@ in option 2 above. Do not smuggle a secret into an agent's persona docs, a skill
 
 ## Session file attachment and repository mounting
 
-Files helpers write text into `/workspace`, inspect directories/text and read binary content.
-Sessions of one Agent share workspace files. There is no general public binary upload or
-repository mount contract. Published Artifacts are separate immutable copies; the Agent's own
-`artifact_publish` tool creates them. Download URLs are revocable capabilities.
+Provide text task data in a Session `user.message`; ask the Agent to create any needed files
+in `/workspace` and publish output with its `artifact_publish` tool. Retrieve the published
+Artifact through the Artifact API. Follow `developer-api.md` for the complete flow. Direct
+workspace Files endpoints are outside the currently supported public workflow, even when the
+installed SDK exposes their methods.
 
-Use Files for text inputs and an Agent per user for file isolation. `actor.ref` does not isolate
-files. Do not introduce a repository clone recipe that requires putting private credentials in
-Agent instructions or files.
+Sessions of one Agent share workspace files. There is no general public binary upload or
+repository mount contract. Published Artifacts are separate immutable copies, not input
+uploads or live workspace files. Treat download URLs as bearer credentials.
+
+Use an Agent per user for file isolation. `actor.ref` does not isolate files. Do not introduce
+a repository clone recipe that requires putting private credentials in Agent instructions or files.
 
 ## Outcome definitions on interactive sessions
 
@@ -288,7 +292,7 @@ create-time decision because the Environment pin freezes on first sandbox creati
 | Session-local model/tools/MCP overrides | Configure the Agent or create a separate Agent. |
 | Root Skill and Environment administration; Channel binding | Unavailable to Project keys; methods do not grant permissions. |
 | Schedule cleanup | Stop/delete does not clean schedules; remove schedules before deleting the Agent. |
-| Binary input upload | Files writes accept text; a binary content read is not an upload API. |
+| Binary input upload | Text in a Session message and Artifact downloads do not provide a binary upload API. |
 | Programmatic end-user credential store | Keep credentials in your backend and call controlled custom tools. |
 | Key management | Create and manage Project keys in https://platform.zoowork.ai. Secrets are shown once. |
 

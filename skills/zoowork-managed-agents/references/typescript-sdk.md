@@ -1,7 +1,7 @@
 # TypeScript SDK surface
 
 Client methods are grouped below. The installed package's `dist/index.d.ts` is the authority
-for availability and signatures. Read `developer-api.md` for Files, Database, Usage, Run Output,
+for availability and signatures. Read `developer-api.md` for text task inputs, file outputs, Database, Usage, Run Output,
 action paging and signed webhook helpers, including release checks and HTTP fallback.
 
 ## Client construction
