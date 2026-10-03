@@ -226,7 +226,7 @@ is a separate, source-reviewed contract: named Project keys upload with `scope="
 Default Project keys use `scope="org"`. `upload_skill` accepts a string scope. Read
 [Skill registry](./skill-registry.md) for packaging, deployment verification, write permissions
 and version publishing. Use `list_agent_skills` to inspect resolved attached Skills.
-Read `developer-api.md` for text task inputs, file outputs, Database availability, Usage, Run Output,
+Read `developer-api.md` for sending a file to an Agent, text task inputs, file outputs, Database availability, Usage, Run Output,
 action detail/paging and Agent webhook management. Check installed source before using new methods.
 
 ## Method groups

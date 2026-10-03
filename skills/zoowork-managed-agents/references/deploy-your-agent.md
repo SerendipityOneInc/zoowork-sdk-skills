@@ -160,8 +160,8 @@ New Agents receive global Skills by default. For existing catalog Skills, choose
 Put standing persona instructions in `persona.docs`; this does not package scripts or resources
 from a local Skill folder. Read local text task data in your application and include it in a
 Session `user.message`. Ask the Agent to publish outputs with `artifact_publish` and retrieve
-those through the Artifact API. Skill ZIP publishing is not a general binary task input or
-workspace upload API; follow `developer-api.md` for that separate boundary.
+those through the Artifact API. Skill ZIP publishing is not task input; to give the Agent a
+local file for a task, follow the upload flow in `developer-api.md`.
 
 ## Step 5. Verify the declared configuration
 

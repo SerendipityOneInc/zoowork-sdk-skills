@@ -44,11 +44,11 @@ older release, say so and ask before upgrading.
 |---|---|
 | TypeScript method, option, return shape, Agent config, model, MCP, permission, Environment, channel, schedule, approval, artifact, `exec`, or `wake` | `references/typescript-sdk.md` |
 | Python import, snake_case method, return shape, event helper, custom tool, Session cursor, Agent config, MCP, or channel | `references/python-sdk.md` |
-| Text task inputs, file outputs, Database availability, Usage, webhook registration/verification/delivery diagnostics, Run Output, or action paging/detail | `references/developer-api.md` |
+| Sending a local file (PDF, image, CSV, any bytes) to an Agent, text task inputs, file outputs, Database availability, Usage, webhook registration/verification/delivery diagnostics, Run Output, or action paging/detail | `references/developer-api.md` |
 | Stream replies, reconnect, render events or tool calls, read/export history, or write Session events | `references/events-and-streaming.md` |
 | Host an Agent built locally, select its Skills, deploy one Agent per user, or keep one Skill synchronized across a fleet | `references/deploy-your-agent.md` — follow it in order |
 | Upload, version, list, or delete a platform Skill ZIP | `references/skill-registry.md` — check deployment support and the key's write scope |
-| Credentials, binary file attachment, repository mount, worker queues, cross-Agent Session listing, rollback, or another uncertain capability | `references/not-supported.md` — check before designing |
+| Credentials, message attachments, repository mount, worker queues, cross-Agent Session listing, rollback, or another uncertain capability | `references/not-supported.md` — check before designing |
 
 Read more than one reference only when the request genuinely crosses those boundaries. For example,
 a basic streaming chat needs the language reference plus events; it does not need the deployment or
@@ -172,9 +172,10 @@ skill, which teaches a developer's assistant how to call ZooWork.
   for upload, versioning, write permissions, SDK compatibility, and deployment verification.
 - Project keys do not administer root Environments or Channels. These are separate capabilities.
 - Use `persona.docs` for standing instructions and Session messages for text task inputs.
+  To give the Agent a local file, upload it into `/workspace` and name its path in the message.
   Ask the Agent to create and publish output, then download it through the Artifact API.
-  Read `references/developer-api.md` for this flow. A workspace file is not a registered Skill.
-  Skill ZIP publishing has its own registry flow; it is not general binary task input upload.
+  Read `references/developer-api.md` for these flows. A workspace file is not a registered
+  Skill, and Skill ZIP publishing is a separate registry flow, not task input.
 - Prove runtime behavior with an authorized real turn; attachment state alone does not prove use.
 
 Follow `references/deploy-your-agent.md` for packaging, versioning, attachment verification,
@@ -185,8 +186,10 @@ per-user isolation, scheduling, UI wiring, and teardown.
 “The SDK has no helper” and “the platform has no public contract” are different claims. Before
 saying a feature is absent, inspect the installed SDK, public docs, `references/developer-api.md`, and `references/not-supported.md`.
 A method in SDK declarations proves its signature, not that its endpoint works in production.
-Use the documented message-to-Artifact flow for text inputs and file outputs; do not add direct
-workspace Files calls as an input or download step.
+Send input files with the upload flow in `references/developer-api.md` and retrieve outputs as
+Artifacts. Do not call the workspace Files methods (`writeWorkspaceFile`, `getWorkspaceFile`,
+`getWorkspaceFileContent`, and their Python equivalents): the hosted service does not enable
+those routes and the calls fail with HTTP 501 or 502.
 
 Use these evidence labels:
 

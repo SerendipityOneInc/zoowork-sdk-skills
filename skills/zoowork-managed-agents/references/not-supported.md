@@ -155,17 +155,16 @@ in the second-turn pattern above. Do not smuggle a secret into an agent's person
 
 ---
 
-## Session file attachment and repository mounting
+## Message attachments and repository mounting
 
-Provide text task data in a Session `user.message`; ask the Agent to create any needed files
-in `/workspace` and publish output with its `artifact_publish` tool. Retrieve the published
-Artifact through the Artifact API. Follow `developer-api.md` for the complete flow. Direct
-workspace Files endpoints are outside the currently supported public workflow, even when the
-installed SDK exposes their methods.
+A Session `user.message` carries text only, and there is no repository mount contract. To give
+the Agent a file, upload it into `/workspace` and name its path in the message; follow
+`developer-api.md` for the upload flow. Ask the Agent to publish output with its
+`artifact_publish` tool and retrieve it through the Artifact API. The workspace Files methods
+in the SDK fail with HTTP 501 or 502 on the hosted service; do not call them.
 
-Sessions of one Agent share workspace files. There is no general public binary upload or
-repository mount contract. Published Artifacts are separate immutable copies, not input
-uploads or live workspace files. Treat download URLs as bearer credentials.
+Sessions of one Agent share workspace files. Published Artifacts are separate immutable
+copies, not live workspace files. Treat download URLs as bearer credentials.
 
 Use an Agent per user for file isolation. `actor.ref` does not isolate files. Do not introduce
 a repository clone recipe that requires putting private credentials in Agent instructions or files.
@@ -284,7 +283,7 @@ policy. Keep network access that must be restricted in your own backend or a cus
 | Root Environment administration; Channel binding | Unavailable to Project keys; methods do not grant permissions. |
 | Skill registry publishing | Source-reviewed Project-key support has scope and deployment requirements; see [Skill registry](./skill-registry.md). Do not infer that publishing is unavailable from Environment or Channel restrictions. |
 | Schedule cleanup | Stop/delete does not clean schedules; remove schedules before deleting the Agent. |
-| Binary input upload | Text in a Session message and Artifact downloads do not provide a binary upload API. |
+| Message attachments | A Session message carries text only. Upload the file into `/workspace` (see `developer-api.md`) and name its path in the message. |
 | Programmatic end-user credential store | Keep credentials in your backend and call controlled custom tools. |
 | Key management | Create and manage Project keys in https://platform.zoowork.ai. Secrets are shown once. |
 
