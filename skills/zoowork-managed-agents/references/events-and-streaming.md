@@ -380,9 +380,11 @@ Three rules, each of which is a bug someone has already shipped:
    separated by events belonging to others, so a renderer that assumes the next `agent.tool` closes
    the previous one attributes results to the wrong tool. Keep a `Map<string, ToolCall>` keyed by
    `toolCallId` and delete on `end` or `blocked`.
-2. **`blocked` is terminal, not pending.** Policy rejected the call before execution; no
-   `end` follows for that call. Remove it from the pending map and render it as rejected,
-   not successful. Approval waiting emits `agent.approval` / `requested`; `resolved` ends
+2. **`blocked` is terminal, not pending.** The call ended without execution; no `end` follows.
+   Reasons include policy denial, approval denial (`approval-denied`), approval timeout
+   (`approval-timeout`), cancellation (`approval-cancelled`), or interruption (`interrupted`).
+   Read `ev.payload.deniedReason`, remove the call from the pending map, and render its reason,
+   not success. Approval waiting emits `agent.approval` / `requested`; `resolved` ends
    the wait, after which the tool/run outcome still needs observation.
 3. **`isError` does not fail the run.** An `agent.tool` `end` with `isError: true` is routinely
    followed by `run.finished` with `status: 'succeeded'` - the model saw the tool error, worked

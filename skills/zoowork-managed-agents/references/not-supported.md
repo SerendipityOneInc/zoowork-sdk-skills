@@ -201,8 +201,9 @@ an authorized reviewer. Resolve only an allowed decision from `allowed_decisions
 REST resolution with `signaled: true` may still show pending until the run consumes it.
 Use `listApprovals(agentId, { status: 'pending' })` to recover pending decisions after restart.
 
-`agent.tool` / `blocked` is terminal policy rejection without execution. It is not an
-approval request, and no `end` follows for that blocked call. Do not wait for blocked to
+`agent.tool` / `blocked` ends a call without execution. Reasons include policy denial,
+approval denial/timeout/cancellation, or interruption; inspect the raw event payload's
+`deniedReason`. It is not an approval request, and no `end` follows for that blocked call. Do not wait for blocked to
 render an approval UI. Use exact per-tool overrides when a server-wide grant is too broad.
 
 ---

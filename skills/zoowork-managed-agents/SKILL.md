@@ -138,8 +138,10 @@ payloads retain public wire spelling where documented.
   exactly-once.
 - `listEvents()` returns one page and drops pagination metadata. Use `listAllEvents()` for the full
   history or `listEventsPage()` for explicit cursor pagination.
-- `toolCall().phase` is `start`, `end`, or `blocked`. `blocked` is terminal policy rejection
-  without execution; no `end` follows. Approval waiting is `agent.approval` / `requested`.
+- `toolCall().phase` is `start`, `end`, or `blocked`. `blocked` ends a call without execution; no
+  `end` follows. Reasons include policy denial, approval denial/timeout/cancellation, or
+  interruption; inspect the raw event payload's `deniedReason`. Approval waiting is
+  `agent.approval` / `requested`.
 - A failed tool call does not necessarily fail the run. `runOutcome()` is the authority.
 - Retried writes should use a stable `idempotency_key`.
 - A valid `user.interrupt` with no active run can return `accepted: false`; that is a normal no-op.
