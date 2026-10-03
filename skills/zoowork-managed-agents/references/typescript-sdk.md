@@ -359,6 +359,10 @@ interface ExecResult { exit_code: number; stdout: string; stderr: string }   // 
 interface WakeResult { mode: 'now' | 'next-heartbeat' | string; queued: boolean; triggered: boolean }
 ```
 
+`uploadFile(agentId, path, content)` copies bytes or a string into `/workspace` through `exec`
+and resolves to `{ path, size, sha256 }`. Use it only when the installed declaration has it;
+otherwise follow the `exec` upload in `developer-api.md`.
+
 `exec(id, ['ls /workspace'])` looks for a binary literally named `ls /workspace`; for shell
 semantics pass `['bash', '-lc', 'ls /workspace']`. **A non-zero exit is still HTTP 200** - the
 promise resolves and you check `exit_code` yourself; it rejects when the call fails, not when the

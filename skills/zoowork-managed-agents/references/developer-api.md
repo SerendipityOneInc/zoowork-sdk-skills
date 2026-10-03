@@ -46,19 +46,68 @@ Run Output contains text and artifact references. An artifact_id can be null; do
 non-null ID through the Artifact API. Follow next_cursor while has_more is true. A running run
 can have no next page and still be incomplete: require output_complete=true for a complete result.
 
+## Send a file to an Agent
+
+Copy the file into the Agent's `/workspace`, then name its path in a Session `user.message`.
+The Agent reads it with its file tools, or with its `pdf` and `image` tools. A Session message
+carries text only; there is no message attachment.
+
+If the installed SDK declares `uploadFile` (TypeScript) or `upload_file` (Python), call it:
+
+```ts
+import { readFile } from 'node:fs/promises'
+
+const file = await client.uploadFile(agentId, 'input/report.pdf', await readFile('report.pdf'))
+// file.path === '/workspace/input/report.pdf'
+```
+
+```python
+file = await client.upload_file(agent_id, "input/report.pdf", Path("report.pdf").read_bytes())
+```
+
+If it does not, send the bytes through `exec`, which every supported SDK release has. One argv
+string is capped at 128 KiB, and a longer one fails with an HTML 502, so send base64 chunks
+of at most 72,000 bytes and verify the checksum at the end:
+
+```ts
+import { createHash } from 'node:crypto'
+
+async function uploadFile(agentId: string, path: string, data: Uint8Array) {
+  const sh = async (script: string, ...args: string[]) => {
+    const res = await client.exec(agentId, ['bash', '-c', script, 'upload', ...args])
+    if (res.exit_code !== 0) throw new Error(`upload failed: ${res.stderr}`)
+    return res
+  }
+  await sh('mkdir -p "$(dirname "$1")" && : > "$1"', path)
+  for (let i = 0; i < data.length; i += 72_000) {
+    const chunk = Buffer.from(data.subarray(i, i + 72_000)).toString('base64')
+    await sh('printf %s "$2" | base64 -d >> "$1"', path, chunk)
+  }
+  const sha256 = createHash('sha256').update(data).digest('hex')
+  await sh('[ "$(sha256sum "$1" | cut -d" " -f1)" = "$2" ]', path, sha256)
+}
+```
+
+Pass values as arguments after the script, as above, never by building them into the shell
+string. A relative path resolves against `/workspace`. Each chunk is one request, about 100 KB
+per second in a staging run that uploaded files from 42 bytes to 3 MiB, so this suits files up
+to a few megabytes. `exec` requires the default agent-scope sandbox.
+
+Do not call the workspace Files methods (`writeWorkspaceFile`, `getWorkspaceFile`,
+`getWorkspaceFileContent`, and their Python equivalents) as a setup, input, inspection or
+download step. The hosted service does not enable those routes; the calls fail with HTTP 501
+or 502 even though the SDK declares the methods.
+
 ## Text task inputs and file outputs
 
 Read local text data in your application and include it in a Session `user.message`. Ask the
 Agent to create files in `/workspace`, verify their contents and publish output using its
 in-loop `artifact_publish` tool. The application downloads the published Artifact.
 This is the flow in the public [Files guide](https://zoowork.ai/docs/build/files.md).
-Direct workspace Files endpoints are outside the currently supported public workflow; an SDK
-method or an offline test does not establish production availability. Do not use direct Files
-calls as a setup, input, inspection or output-download step.
 
 These examples reuse a running Agent and an initialized SDK client. Keep input text within
-the documented message limits; this is not a binary upload, repository mount or registered
-Skill upload. `persona.docs` holds standing instructions, rather than per-task data.
+the documented message limits. `persona.docs` holds standing instructions, rather than
+per-task data.
 
 ```ts
 import { readFile, writeFile } from 'node:fs/promises'
