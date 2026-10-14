@@ -58,6 +58,9 @@ one is supplied. `default_for` names configuration slots such as `model`, `image
 primary chat default, select the selectable row whose `default_for` includes `model`. The catalog
 is not ordered by preference, so do not take its first selectable row.
 
+Read [Thinking levels](./thinking-levels.md) for `ModelInfo.thinking`, the five-level enum,
+clamping, platform defaults, and the distinct Agent/Schedule clear semantics.
+
 ## Agents
 
 A stored, versioned configuration. Create once, keep the `agent_id`, reference by id forever.
@@ -99,7 +102,7 @@ optional except `name: string`:
 | Field | Type | Note |
 |---|---|---|
 | `userTimezone` | `string` | named IANA timezone used in prompt context and message timestamps; it does not set Schedule timezone |
-| `model` | `{ primary: string; input?: string[]; max_tokens?: number }` | prefixed id from `listModels()`; `max_tokens` caps output per model request (omit for the platform default) |
+| `model` | `{ primary: string; input?: string[]; max_tokens?: number; thinking?: ThinkingLevel \| null }` | prefixed id from `listModels()`; `max_tokens` caps output per model request (omit for the platform default) |
 | `persona` | `{ docs: { name: string; content: string; seed_policy?: string }[] }` | `docs` is an **array of documents**, not a filename-keyed object |
 | `skills` | `{ skill_id: string; version?: number \| 'latest' }[]` | explicit installs; an empty array at create opts out of automatic global Skills |
 | `include_global_skills` | `boolean` | defaults true; false disables automatic global Skills without removing explicit installs, and persists across updates and rerenders |
@@ -221,6 +224,20 @@ route-status can project `active` with zero channel counts; a transient query fa
 Successful start/stop responses may contain warnings, but HTTP and transport failures still throw.
 Source-reviewed stop behavior can write desired state before a later step fails: read `getAgent`
 after an uncertain failure and reconcile. Soft deletion is not resource cleanup.
+
+### Thinking types and partial model updates
+
+```ts
+type ThinkingLevel = 'off' | 'low' | 'medium' | 'high' | 'max'
+type AgentModelUpdate = Partial<NonNullable<AgentResource['model']>>
+type AgentUpdate = { model?: AgentModelUpdate; [section: string]: unknown }
+```
+
+Use `satisfies AgentUpdate` to check a partial `model.thinking` update. `updateAgent` itself
+continues to take `Record<string, unknown>`. `ModelInfo.thinking` is optionally
+`{ default: ThinkingLevel; levels: ThinkingLevel[] }`. `SchedulePayload.thinking` is
+`ThinkingLevel | null`. Exact examples and compatibility rules are in
+[Thinking levels](./thinking-levels.md).
 
 ## Channels
 
@@ -378,6 +395,10 @@ enabled; if the heartbeat is busy the kick is skipped and the row waits for the 
 `deliverToUser: false` keeps the reminder internal to the agent's reasoning.
 
 ## Schedules
+
+For a Schedule's reasoning override, use `payload.thinking` on `agentTurn`. Its `null` value
+clears the override and follows the Agent again. Read [Thinking levels](./thinking-levels.md)
+for allowed values, legacy normalization and effective-level checks.
 
 Cron-driven turns, where the read shape and the write shape are different documents.
 

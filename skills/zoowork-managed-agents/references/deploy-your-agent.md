@@ -51,6 +51,14 @@ This call touches no agent and creates nothing, so it doubles as the cheapest pr
 
 ---
 
+### Choose the thinking level
+
+Read the selected model's `thinking.default` and `thinking.levels` before setting
+`model.thinking`. Leaving it unset follows the platform default. A higher level generally
+uses more reasoning tokens and increases latency; `off` does not disable reasoning on every
+model. Read [Thinking levels](./thinking-levels.md) for capability resolution, partial updates
+and when existing Sessions receive a changed setting.
+
 ## Step 2. Create the agent
 
 `persona.docs` is where the local system prompt lands. Each entry is a named document the agent

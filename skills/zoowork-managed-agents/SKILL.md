@@ -1,6 +1,6 @@
 ---
 name: zoowork-managed-agents
-description: Build on ZooWork Managed Agents through the `@zoowork-ai/sdk` TypeScript SDK or `zoowork` Python SDK. Use whenever ZooWork, a `zwp_live_`, `agt_`, or `skl_` identifier, `ZOOWORK_API_KEY`, a ZooWork Agent or Session, streaming events, custom tools, MCP, platform Skills, Environments, channels, schedules, approvals, or ZooWork API errors are mentioned. Inspect the installed SDK version and read the routed reference before writing ZooWork code.
+description: Build on ZooWork Managed Agents through the `@zoowork-ai/sdk` TypeScript SDK or `zoowork` Python SDK. Use whenever ZooWork, a `zwp_live_`, `agt_`, or `skl_` identifier, `ZOOWORK_API_KEY`, a ZooWork Agent or Session, streaming events, custom tools, MCP, platform Skills, Environments, channels, schedules, thinking levels or reasoning effort, approvals, or ZooWork API errors are mentioned. Inspect the installed SDK version and read the routed reference before writing ZooWork code.
 license: MIT
 ---
 
@@ -35,13 +35,14 @@ Before writing code:
 If no project is present, state which package and runtime the example assumes. TypeScript requires
 Node.js 20+; Python requires Python 3.10+. Install the published package with
 `npm install @zoowork-ai/sdk` or `python -m pip install zoowork`. The public docs and these
-references assume `@zoowork-ai/sdk` 0.11.1+ and `zoowork` 0.6.1+; if an existing project pins an
+references assume `@zoowork-ai/sdk` 0.12.0+ and `zoowork` 0.7.0+; if an existing project pins an
 older release, say so and ask before upgrading.
 
 ## Route by task
 
 | User intent | Read before acting |
 |---|---|
+| Set or clear Agent thinking, reasoning effort, model thinking capabilities, or Schedule thinking overrides | `references/thinking-levels.md`, then the language reference |
 | TypeScript method, option, return shape, Agent config, model, MCP, permission, Environment, channel, schedule, approval, artifact, `exec`, or `wake` | `references/typescript-sdk.md` |
 | Python import, snake_case method, return shape, event helper, custom tool, Session cursor, Agent config, MCP, or channel | `references/python-sdk.md` |
 | Sending a local file (PDF, image, CSV, any bytes) to an Agent, text task inputs, file outputs, Database availability, Usage, webhook registration/verification/delivery diagnostics, Run Output, or action paging/detail | `references/developer-api.md` |
@@ -202,6 +203,7 @@ Do not run live, billable, or tenant-mutating calls merely to answer a design qu
 
 ## Common pitfalls
 
+- Set reasoning through `model.thinking`, not provider fields such as `reasoning_effort`. Agent `null` clears the declaration; Schedule `payload.thinking: null` clears only its override. Read `references/thinking-levels.md` before choosing a level.
 - Wait on `desired_state`, never `actual_state`; the latter is a chat-channel health projection.
 - Platform uses a managed Environment. Project keys do not administer root Environments.
 - `createAgent` and `getAgent` return different shapes.

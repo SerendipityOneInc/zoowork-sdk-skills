@@ -1139,6 +1139,93 @@
           ]
         }
       ]
+    },
+    {
+      "id": 22,
+      "name": "thinking-default-clear-and-schedule-override",
+      "prompt": "I use ZooWork TypeScript SDK 0.12.0 and Python zoowork 0.7.0. I already have clients, an agentId/agent_id, and an enabled scheduleId/schedule_id. Write snippets for both SDKs that set the Agent reasoning level to high, clear it, override only the Schedule to low, and clear that override. Read the model catalog before choosing a level. Explain whether off disables every model, which setting wins, what a null clear follows, and whether an existing Session gets the updated Agent setting. Do not execute API requests or upgrade packages.",
+      "expected_output": "Uses model.thinking and agentTurn payload.thinking, preserves null/None in partial updates, reads Models capabilities, distinguishes Agent and Schedule clears and pinned Sessions, and explains nearest-level resolution.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "uses public Agent thinking field",
+          "kind": "present",
+          "patterns": [
+            "model\\s*:\\s*\\{[^}]*thinking",
+            "\"model\"\\s*:\\s*\\{[^}]*\"thinking\""
+          ]
+        },
+        {
+          "name": "Agent clear retains null or None on the wire",
+          "kind": "present",
+          "patterns": [
+            "model\\s*:\\s*\\{\\s*thinking\\s*:\\s*null",
+            "\"model\"\\s*:\\s*\\{\\s*\"thinking\"\\s*:\\s*None"
+          ]
+        },
+        {
+          "name": "uses Schedule override input",
+          "kind": "present",
+          "patterns": [
+            "payload\\s*:\\s*\\{[^}]*thinking\\s*:\\s*[\\'\\\"]low[\\'\\\"]",
+            "\"payload\"\\s*:\\s*\\{[^}]*\"thinking\"\\s*:\\s*\"low\"",
+            "\\b(?:const|let)\\s+(\\w+)(?:\\s*:\\s*ThinkingLevel)?\\s*=\\s*[\\'\\\"]low[\\'\\\"][\\s\\S]*?\\bpayload\\s*:\\s*\\{[^}]*\\bthinking\\s*:\\s*\\1\\b",
+            "\\b(\\w+)(?:\\s*:\\s*ThinkingLevel)?\\s*=\\s*[\\'\\\"]low[\\'\\\"][\\s\\S]*?\"payload\"\\s*:\\s*\\{[^}]*\"thinking\"\\s*:\\s*\\1\\b"
+          ]
+        },
+        {
+          "name": "Schedule clear retains null or None",
+          "kind": "present",
+          "patterns": [
+            "payload\\s*:\\s*\\{[^}]*thinking\\s*:\\s*null",
+            "\"payload\"\\s*:\\s*\\{[^}]*\"thinking\"\\s*:\\s*None"
+          ]
+        },
+        {
+          "name": "reads Models thinking capabilities",
+          "kind": "present",
+          "patterns": [
+            "thinking\\??\\.(?:levels|default)",
+            "capability\\[\"levels\"\\]",
+            "\\[\"thinking\"\\]\\[\"levels\"\\]"
+          ]
+        },
+        {
+          "name": "uses both SDK method vocabularies",
+          "kind": "present",
+          "patterns": [
+            "update_agent\\("
+          ]
+        },
+        {
+          "name": "explains nearest-level resolution",
+          "kind": "present",
+          "patterns": [
+            "nearest",
+            "closest",
+            "\u6700(?:\u63a5)?\u8fd1"
+          ]
+        },
+        {
+          "name": "explains pinned Session lifetime",
+          "kind": "present",
+          "patterns": [
+            "pin(?:ned|s)?",
+            "fixed.version",
+            "\u56fa\u5b9a(?:\u5230|\u5728|\u7248\u672c)",
+            "runtime_mode"
+          ]
+        },
+        {
+          "name": "distinguishes model default from platform overrides",
+          "kind": "present",
+          "patterns": [
+            "platform safety override",
+            "\u5e73\u53f0.*(?:\u8986\u76d6|\u5f3a\u5236)",
+            "default[^\\n]*(?:\u4e0d\u4fdd\u8bc1|not[^\\n]*effective)"
+          ]
+        }
+      ]
     }
   ]
 }
