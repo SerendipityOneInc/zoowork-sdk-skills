@@ -68,6 +68,14 @@ present. For the primary chat default, use the selectable row whose `default_for
 `model`, as above. `userTimezone` is the wire spelling for the Agent's named IANA timezone; it affects prompt
 context and message timestamps, not Schedule timezone.
 
+## Thinking settings
+
+`ThinkingLevel = Literal["off", "low", "medium", "high", "max"]` is exported by `zoowork`.
+Use `model.thinking` in `create_agent` or `update_agent`, and `payload.thinking` on a
+Schedule's `agentTurn`. Python `None` serializes to JSON `null`; it clears the Agent declaration
+or Schedule override. Read [Thinking levels](./thinking-levels.md) for examples, model
+capabilities, precedence and update compatibility.
+
 ## Events
 
 ```python

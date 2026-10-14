@@ -165,3 +165,14 @@ test('Skill upload tripwire distinguishes Project ZIP publishing from the old bl
   assert.equal(check(2, common + "form.append('scope', 'project'); form.append('files[]', zip)").status, 0);
   assert.equal(check(2, common + "form.append('scope', 'org'); form.append('files[]', zip)").status, 1);
 });
+
+// A variable holding low is as valid as an inline literal in a Schedule update.
+test('thinking override tripwire accepts typed level variables and rejects a high override', () => {
+  const passed = source => check(22, source).result.checks
+    .find(item => item.text === 'uses Schedule override input').passed;
+  assert.equal(passed("const low: ThinkingLevel = 'low'; payload: { kind: 'agentTurn', thinking: low }"), true);
+  assert.equal(passed('low: ThinkingLevel = "low"; "payload": {"kind": "agentTurn", "thinking": low}'), true);
+  assert.equal(passed("const low: ThinkingLevel = 'high'; payload: { kind: 'agentTurn', thinking: low }"), false);
+  assert.equal(passed("payload: { kind: 'agentTurn', thinking: 'high' }"), false);
+  assert.equal(passed('"payload": {"kind": "agentTurn", "thinking": "medium"}'), false);
+});
