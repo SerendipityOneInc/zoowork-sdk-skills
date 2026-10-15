@@ -69,7 +69,7 @@ A stored, versioned configuration. Create once, keep the `agent_id`, reference b
 createAgent(input: { resource: AgentResource; ownership?: Ownership }, idempotencyKey?: string): Promise<AgentRecord>
 listAgents(opts?: AgentListParams): AgentPagePromise
 getAgent(agentId: string): Promise<AgentRecord>
-updateAgent(agentId: string, sections: Record<string, unknown>): Promise<AgentRecord>  // per-section PUT; ownership-only changes do not bump config_version; production rejects expected_config_version
+updateAgent(agentId: string, sections: Record<string, unknown>): Promise<AgentRecord>  // per-section PUT; ownership-only changes do not bump config_version; optional expected_config_version gives atomic CAS
 deleteAgent(agentId: string): Promise<void>                     // first success 204, repeat 404; does NOT remove the agent's schedules - delete those yourself first
 startAgent(agentId: string): Promise<{ warnings: string[] }>    // successful warnings are informational; non-2xx still throws
 stopAgent(agentId: string): Promise<{ warnings: string[] }>     // does not clear environment_locked, does not remove schedules
@@ -87,10 +87,14 @@ receipt and the read projection are different documents under one `AgentRecord` 
 
 Read the version across both as `agent.status?.config_version ?? agent.config_version`. One alone is
 `undefined` on the other path, and `undefined === undefined` makes a "nothing changed" check pass
-when it should not. Production rejects `expected_config_version` on Agent updates with
-`400 invalid_declared_key`. Omit it and serialize competing writes in your backend; GET then
-PUT is not atomic. Configuration writes can increment the version even with identical values,
-while ownership-only changes do not. Read your declared section to reconcile uncertain writes.
+when it should not. Pass the positive version as top-level `expected_config_version` in
+`updateAgent` sections for an atomic check-and-write. A mismatch returns
+`409 active_config_changed` and changes nothing. Re-read the Agent and recompute the intended
+change before retrying; do not just put a fresh version on a stale body. The precondition is
+not stored in `declared`. Omit it for last-write-wins updates. Configuration writes can
+increment the version even with identical values, while ownership-only changes do not.
+Read your declared section to reconcile uncertain writes. This optional Agent PUT precondition
+is separate from the required `upgradeSystemPrompt` precondition (`409 config_version_changed`).
 
 **`updateAgent` merges per section.** `sections` is the declared config keyed by section, so sending
 only `model` leaves `persona`, `labels`, `mcp` and the rest untouched. Plain-object sections shallow-merge one level: updating

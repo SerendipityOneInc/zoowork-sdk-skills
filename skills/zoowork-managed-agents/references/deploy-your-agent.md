@@ -174,9 +174,11 @@ local file for a task, follow the upload flow in `developer-api.md`.
 ## Step 5. Verify the declared configuration
 
 Read `getAgent` and `listAgentSkills`; compare the desired persona and resolved assignments.
-A configuration version alone is not proof your instructions changed. Production rejects
-`expected_config_version` with `400 invalid_declared_key`. Omit it and serialize competing
-writes in your application; a GET followed by PUT is not atomic.
+A configuration version alone is not proof your instructions changed. Read the current version
+as `agent.status?.config_version ?? agent.config_version` and send it as top-level
+`expected_config_version` with the intended update for an atomic precondition. A stale version
+returns `409 active_config_changed` without changing configuration; re-read and recompute the
+change before retrying. Omit the field for last-write-wins updates.
 
 ## Step 6. Smoke test with a real turn that should use a skill
 
@@ -345,8 +347,9 @@ UI wants, checkpointing the last successfully processed `ev.cursor` and resuming
 An Agent per user separates workspace files and sandbox state. Persist the mapping in your
 backend, authorize the user before every read/write, and use stable idempotency keys for
 provisioning. Keep shared persona and instructions in application source control; compare
-current declared state and serialize updates per Agent. Omit `expected_config_version`,
-which production rejects; reading before writing does not provide an atomic precondition.
+current declared state and pass its positive `expected_config_version` with each computed
+update. On `409 active_config_changed`, re-read and recompute rather than replaying a stale
+body with a new version. Omit the precondition only for intentional last-write-wins updates.
 
 Provision serially. Concurrent `createAgent` calls in one Organization can return
 `503 platform.runtime_credentials_unavailable` before any Agent is created; retry with backoff and
