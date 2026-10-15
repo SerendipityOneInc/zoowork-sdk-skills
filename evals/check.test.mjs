@@ -176,3 +176,21 @@ test('thinking override tripwire accepts typed level variables and rejects a hig
   assert.equal(passed("payload: { kind: 'agentTurn', thinking: 'high' }"), false);
   assert.equal(passed('"payload": {"kind": "agentTurn", "thinking": "medium"}'), false);
 });
+
+// The old production boundary expectation recommended omitting a supported CAS field.
+test('Agent update contract no longer rewards the obsolete rejection guidance', () => {
+  const contract = source => check(21, source).result.checks
+    .find(item => item.text === 'uses the Agent update conflict contract').passed
+  assert.equal(contract('Production rejects expected_config_version with invalid_declared_key.'), false)
+  assert.equal(contract('On 409 active_config_changed, re-read and recompute the update.'), true)
+})
+
+// Field mentions in upgrade examples are not evidence of a guarded Agent update.
+test('Agent CAS eval checks the update body and accepts correct Chinese recovery guidance', () => {
+  const checks = source => check(23, source).result.checks
+  const precondition = source => checks(source).find(item => item.text === 'sends the version precondition').passed
+  assert.equal(precondition('Omit expected_config_version; upgradeSystemPrompt(a, { expected_config_version: v })'), false)
+  assert.equal(precondition('await client.updateAgent(a, { expected_config_version: v, labels: { tier: "paid" } })'), true)
+  assert.equal(precondition('await client.update_agent(a, {"expected_config_version": v, "labels": {"tier": "paid"}})'), true)
+  assert.equal(checks('\u51b2\u7a81\u540e\u91cd\u65b0\u8bfb\u53d6\u5e76\u91cd\u65b0\u8ba1\u7b97\u6539\u52a8\u3002').find(item => item.text === 'recomputes after a stale write').passed, true)
+})

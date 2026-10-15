@@ -1053,7 +1053,7 @@
       "id": 21,
       "name": "production-contract-boundaries",
       "prompt": "We are shipping a hackathon backend on the published @zoowork-ai/sdk 0.10.0 with a Platform Project key. Give TypeScript snippets and integration decisions for: (1) supplying local CSV text and reading the Agent database sales table from our app; (2) creating a disabled daily schedule, manually testing it, then enabling recurring execution; (3) rendering a tool waiting for approval and a denied tool; (4) sending a second message in the same Session without printing the first answer again, including what to do after restart if no stream cursor was saved; (5) retrying Agent deletion after a lost response; (6) two workers updating the Agent with optimistic concurrency; (7) handling an invalid Usage range or page size. Use only currently supported behavior, and say when the requested flow cannot be provided. Do not run live requests.",
-      "expected_output": "Message inputs, Agent-mediated database reads, enabled schedules, requested approvals vs terminal blocked, cursor-preserving second turn and explicit missing-cursor boundary, scoped delete reconciliation, no Agent CAS promise, both Usage validation statuses.",
+      "expected_output": "Message inputs, Agent-mediated database reads, enabled schedules, requested approvals vs terminal blocked, cursor-preserving second turn and explicit missing-cursor boundary, scoped delete reconciliation, optional atomic Agent CAS with stale-version recovery, both Usage validation statuses.",
       "files": [],
       "assertions": [
         {
@@ -1125,10 +1125,10 @@
           ]
         },
         {
-          "name": "states unavailable Agent update precondition",
+          "name": "uses the Agent update conflict contract",
           "kind": "present",
           "patterns": [
-            "invalid_declared_key"
+            "active_config_changed"
           ]
         },
         {
@@ -1136,6 +1136,13 @@
           "kind": "present",
           "patterns": [
             "422"
+          ]
+        },
+        {
+          "name": "sends the optional Agent version precondition",
+          "kind": "present",
+          "patterns": [
+            "expected_config_version"
           ]
         }
       ]
@@ -1223,6 +1230,73 @@
             "platform safety override",
             "\u5e73\u53f0.*(?:\u8986\u76d6|\u5f3a\u5236)",
             "default[^\\n]*(?:\u4e0d\u4fdd\u8bc1|not[^\\n]*effective)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "name": "agent-update-optimistic-concurrency",
+      "prompt": "Our backend uses published ZooWork TypeScript SDK 0.12.0 and Python zoowork 0.7.0. Two workers can update the same Agent labels after reading its configuration. Write a short snippet for each SDK that prevents a stale worker from overwriting another writer. Explain the exact conflict status/type, what must be re-read or recomputed before retrying, where to read the configuration version across response shapes, what happens if the precondition is omitted, whether it is stored in declared configuration, and how this differs from the system-prompt upgrade precondition. Clients and agentId/agent_id already exist. Do not call APIs or install packages.",
+      "expected_output": "Read the current version across projection/receipt shapes; send top-level expected_config_version; handle 409 active_config_changed without writes; re-read and recompute instead of swapping the version on a stale body; omission is last-write-wins; the precondition is not persisted; system-prompt upgrade has required precondition and config_version_changed.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "reads the Agent with both SDKs",
+          "kind": "present",
+          "patterns": [
+            "getAgent[\\s\\S]*get_agent|get_agent[\\s\\S]*getAgent"
+          ]
+        },
+        {
+          "name": "sends the version precondition",
+          "kind": "present",
+          "patterns": [
+            "updateAgent\\s*\\([^,]+,\\s*\\{[\\s\\S]{0,240}\\bexpected_config_version\\s*:",
+            "update_agent\\s*\\([^,]+,\\s*\\{[\\s\\S]{0,240}[\\\"\\x27]expected_config_version[\\\"\\x27]\\s*:"
+          ]
+        },
+        {
+          "name": "uses the Agent PUT conflict type",
+          "kind": "present",
+          "patterns": [
+            "active_config_changed"
+          ]
+        },
+        {
+          "name": "recognizes HTTP 409",
+          "kind": "present",
+          "patterns": [
+            "409"
+          ]
+        },
+        {
+          "name": "reads both configuration version shapes",
+          "kind": "present",
+          "patterns": [
+            "status\\?\\.config_version\\s*\\?\\?\\s*\\w+\\.config_version"
+          ]
+        },
+        {
+          "name": "recomputes after a stale write",
+          "kind": "present",
+          "patterns": [
+            "[Rr]ecompute|[Rr]e-compute",
+            "\u91cd\u65b0\u8ba1\u7b97"
+          ]
+        },
+        {
+          "name": "explains intentional unconditional updates",
+          "kind": "present",
+          "patterns": [
+            "[Ll]ast[- ]write[- ]wins|[Uu]nconditional"
+          ]
+        },
+        {
+          "name": "keeps system-prompt upgrade conflict distinct",
+          "kind": "present",
+          "patterns": [
+            "config_version_changed"
           ]
         }
       ]

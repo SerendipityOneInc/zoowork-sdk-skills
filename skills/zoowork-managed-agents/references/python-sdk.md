@@ -244,8 +244,12 @@ action detail/paging and Agent webhook management. Check installed source before
 - Session create input accepts `runtime_mode: "active"` and `idle_compaction` alongside initial
   events and metadata. Explicit active pins the configuration at creation; omission resolves
   active configuration on later turns.
-- Production Agent updates reject `expected_config_version` with `400 invalid_declared_key`.
-  Omit it and serialize writes in your backend; read-then-write is not atomic.
+- `update_agent` accepts top-level positive `expected_config_version` in its sections mapping.
+  Read it with `(agent.get("status") or {}).get("config_version") or agent.get("config_version")`.
+  The check and write are atomic; stale versions raise status 409, type `active_config_changed`,
+  without changing configuration. Re-read and recompute before retrying. The precondition is
+  not stored in `declared`; omission keeps last-write-wins updates. `upgrade_system_prompt`
+  instead requires its precondition and reports `409 config_version_changed`.
 - MCP exact tool overrides accept `requireConfirmation` as true, false or omitted. True requires `permission: "always_ask"` and offers allow-once or deny. Runtime
   context does not authenticate the caller.
 

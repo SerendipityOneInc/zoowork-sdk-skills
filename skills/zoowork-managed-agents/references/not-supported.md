@@ -248,10 +248,12 @@ and roll back when it regresses.
 
 There is no public configuration-history or rollback endpoint. Explicit `runtime_mode: "active"`
 on Session creation pins the current active configuration. Omission resolves active configuration
-on later turns. Production rejects `expected_config_version` on Agent updates with
-`400 invalid_declared_key`; omit it and serialize competing writes in the application.
-Read-then-write does not provide atomic concurrency. Keep prior configuration in source
-control and reconcile declared values before retrying uncertain writes.
+on later turns. Agent updates support atomic optimistic concurrency through optional positive
+`expected_config_version`; stale versions return `409 active_config_changed` without changing
+configuration. Re-read and recompute the intended change before retrying; omit the field for
+last-write-wins updates. That precondition does not provide configuration history or rollback.
+Keep prior configuration in source control and reconcile declared values before retrying
+uncertain writes.
 
 ---
 

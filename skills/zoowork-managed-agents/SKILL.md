@@ -207,9 +207,9 @@ Do not run live, billable, or tenant-mutating calls merely to answer a design qu
 - Wait on `desired_state`, never `actual_state`; the latter is a chat-channel health projection.
 - Platform uses a managed Environment. Project keys do not administer root Environments.
 - `createAgent` and `getAgent` return different shapes.
-- Production Agent updates reject `expected_config_version` with `400 invalid_declared_key`.
-  Omit it for ordinary last-write-wins updates and serialize competing writes in your backend.
-  A GET followed by PUT is not atomic. The separate system-prompt upgrade precondition works.
+- Agent updates accept optional positive `expected_config_version` for an atomic precondition.
+  Read the current version, then send it at the update body's top level. A mismatch is
+  `409 active_config_changed`: re-read and recompute before retrying. Omit it for last-write-wins.
 - MCP exposure, runtime context, and permission policy are separate controls.
 - Tool-policy wildcards allow an exact name, global `*`, or one trailing `prefix*` only.
 - There is no public credential store for an end user's secret.
