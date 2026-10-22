@@ -1300,6 +1300,90 @@
           ]
         }
       ]
+    },
+    {
+      "id": 24,
+      "name": "empty-directory-chat-demo-offers-starter",
+      "prompt": "I have a ZooWork Platform Project key and an empty directory. I want a runnable web chat demo for a dog-care assistant Agent that I can try in my browser today. What do you suggest, and what are the first steps? Do not run any live requests.",
+      "expected_output": "Mentions the official starter in zoowork-platform-quickstarts once as an option, states its fixed-stack trade-off, and lets the user choose between it and building with the SDK; keeps the key in a server-side .env.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "offers the official starter",
+          "kind": "present",
+          "patterns": [
+            "zoowork-platform-quickstarts"
+          ]
+        },
+        {
+          "name": "lets the user choose instead of deciding for them",
+          "kind": "present",
+          "patterns": [
+            "[Ww]ould you (?:like|prefer|rather)",
+            "[Dd]o you want",
+            "[Ii]f you(?:'d)? (?:prefer|rather|want)",
+            "[Ww]hich (?:do you|would you)"
+          ]
+        },
+        {
+          "name": "keeps the key in a server-side env file",
+          "kind": "present",
+          "patterns": [
+            "\\.env\\b"
+          ]
+        },
+        {
+          "name": "keeps the key out of browser variables",
+          "kind": "absent",
+          "patterns": [
+            "NEXT_PUBLIC_ZOOWORK",
+            "VITE_ZOOWORK",
+            "REACT_APP_ZOOWORK"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "name": "existing-project-chat-uses-sdk-not-starter",
+      "prompt": "Our existing Next.js 15 app (App Router, our own auth, Postgres) needs a support chat page backed by a ZooWork Agent. We use @zoowork-ai/sdk 0.12.0 and already have ZOOWORK_API_KEY on the server. Write the backend route that relays a Session's events to the browser and the route that posts a user message. Do not run any live requests.",
+      "expected_output": "Integrates into the existing app with the SDK: a server route that streams Session events with a resumable cursor, and a route that posts the user message; checks that the Session belongs to the signed-in user; does not redirect to a template or clone another repository.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "does not redirect an existing project to the starter",
+          "kind": "absent",
+          "patterns": [
+            "zoowork-platform-quickstarts",
+            "git clone"
+          ]
+        },
+        {
+          "name": "relays the Session stream with the SDK",
+          "kind": "present",
+          "patterns": [
+            "streamEvents\\s*\\(",
+            "stream_events\\s*\\("
+          ]
+        },
+        {
+          "name": "posts the user message with the SDK",
+          "kind": "present",
+          "patterns": [
+            "postEvents\\s*\\(",
+            "post_events\\s*\\("
+          ]
+        },
+        {
+          "name": "keeps the key out of browser variables",
+          "kind": "absent",
+          "patterns": [
+            "NEXT_PUBLIC_ZOOWORK",
+            "VITE_ZOOWORK",
+            "REACT_APP_ZOOWORK"
+          ]
+        }
+      ]
     }
   ]
 }

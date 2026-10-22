@@ -61,11 +61,24 @@ capability-boundary documents.
 |---|---|
 | No API key or no running Agent | The setup flow below |
 | A key and wants a chat UI | The official SDK on their backend, relaying the Session stream to their UI; follow `references/deploy-your-agent.md` Step 9 |
+| An empty directory, and wants a runnable chat app or demo for one Agent | Offer the starter once (below); if they decline, the official SDK |
 | Their own backend, UI, or Agent design | The official SDK |
 | A local persona and Skills that need hosted execution | `references/deploy-your-agent.md` |
 
 Build the UI in the user's own stack. The backend holds `ZOOWORK_API_KEY`, authorizes each
 end user, and re-emits Session events to the browser.
+
+### Offering the starter
+
+`starter/` in <https://github.com/SerendipityOneInc/zoowork-platform-quickstarts> is an official,
+general-purpose chat app for one Agent with the Session plumbing already done. Its trade-off is a
+fixed stack (Next.js) and structure.
+
+Mention it once, before writing code, only when all of these hold: the user wants a runnable chat
+app or demo, the working directory has no existing project, and the session is interactive. Let the
+user choose. If they accept, follow the starter's README for its commands and configuration instead
+of this file. If they decline, already have a project, or only want code, build with the SDK in
+their own stack and do not bring the starter up again.
 
 ## API key onboarding
 

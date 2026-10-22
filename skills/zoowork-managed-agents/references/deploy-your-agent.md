@@ -299,6 +299,11 @@ this also activates automatic firings. Use `schedule.skipped` webhooks to observ
 
 ## Step 9. Wire up your own front end
 
+Starting from an empty directory, the official starter (`starter/` in
+<https://github.com/SerendipityOneInc/zoowork-platform-quickstarts>) is one option: it implements this
+shape for one Agent in a fixed Next.js stack. Offer it as described in `SKILL.md`; otherwise wire the
+Agent into the user's own backend as below.
+
 The Project key belongs on your backend. It authorizes access within its Project and does not
 authenticate your application's end users. Keep it out of browser/mobile bundles and logs.
 
