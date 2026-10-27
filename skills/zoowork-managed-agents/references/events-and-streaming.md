@@ -279,7 +279,7 @@ does not forward `Last-Event-ID`, so native EventSource header replay is not suf
 
 ## Reading history over REST
 
-`listEvents(agentId, sessionId, opts?: { after?: number; cursor?: string; types?: string[]; limit?: number })`
+`listEvents(agentId, sessionId, opts?: { cursor?: string; types?: string[]; limit?: number })`
 reads the same durable log the stream reads and returns the same normalized `SessionEvent[]`; text
 assembled from a REST replay is identical to text assembled from the stream. But it returns
 **one page** (`limit` defaults to 100 server-side, capped at 500) and drops the page's
@@ -412,7 +412,7 @@ every session method, because the route is `/agents/{id}/sessions/{sid}/events`.
 | Type | Body | Effect |
 |---|---|---|
 | `user.message` | `content` (non-empty **string**), optional `idempotency_key` (exercised - a same-key retry converges on the same event instead of double-delivering), optional `actor: { ref }` (exercised: a valid ref is accepted, a malformed one is a 400) and `attachments[]` (not exercised) | Appends a user turn and starts a run |
-| `user.interrupt` | no other fields | Aborts the in-flight run; that run ends `run.finished` with `status: 'aborted'` |
+| `user.interrupt` | optional event-level `idempotency_key` | Aborts the in-flight run; that run ends `run.finished` with `status: 'aborted'` |
 | `user.tool_confirmation` | `approval_id`, `decision`: `allow-once` / `allow-always` / `deny` | Resolves a pending approval |
 | `user.custom_tool_result` | `custom_tool_use_id` or `call_id`, 1–16 result `content` blocks, optional `is_error`, stable `idempotency_key` | Resolves an application-executed custom call in the same run |
 | `system.message` | `text` (non-empty string) | Injects a note the model reads on the **next** turn |

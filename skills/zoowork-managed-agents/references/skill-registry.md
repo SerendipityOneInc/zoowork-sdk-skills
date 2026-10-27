@@ -12,10 +12,10 @@ Skill registry requests. Older deployments reject `/skills` for Project keys. Ve
 deployment before presenting the workflow as usable there; a successful SDK build proves neither
 server support nor that an Agent read the Skill.
 
-Inspect the installed TypeScript `uploadSkill` declaration. Older SDKs accept only
-`org | personal`; when the installed declaration includes `project`, use
-`uploadSkill(zip, { scope: 'project' })` for a named Project. Otherwise use the multipart HTTP
-request below. Do not use `as any`, switch scope, or invent a minimum SDK release. Python's `upload_skill(..., scope: str)` can send `project` without a signature change.
+Inspect the installed TypeScript `uploadSkill` declaration. TypeScript SDK 0.10.2 and later
+accept `project`; older SDKs accept only `org | personal`. When the installed declaration includes
+`project`, use `uploadSkill(zip, { scope: 'project' })` for a named Project. Otherwise use the
+multipart HTTP request below. Do not use `as any` or switch scope. Python's `upload_skill(..., scope: str)` can send `project` without a signature change.
 Keep credentials on the backend and reuse the application's client configuration.
 
 ## Choose the key's write scope

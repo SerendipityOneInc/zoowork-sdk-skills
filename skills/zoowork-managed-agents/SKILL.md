@@ -6,8 +6,20 @@ license: MIT
 
 # Building on ZooWork Managed Agents
 
-Start with the user's task, then read only the reference that owns it. The public API is a
-Developer Preview, so inspect the installed SDK before relying on a remembered signature.
+Start with the user's task, then read only the documentation that owns it. The public API is a
+Developer Preview, so do not write ZooWork code from memory, and inspect the installed SDK before
+relying on a remembered signature.
+
+The public docs are the primary source. Fetch the page Markdown, not the rendered HTML:
+
+- <https://zoowork.ai/docs/llms.txt> lists every page with a one-line summary.
+- Each page is available as Markdown at `https://zoowork.ai/docs/<section>/<page>.md`, for
+  example <https://zoowork.ai/docs/get-started/quickstart.md>. Do not add a locale prefix such as
+  `/en/`.
+- Avoid `llms-full.txt` unless the task genuinely spans the whole site; it is large.
+
+The `references/` files in this skill add SDK detail that is not yet in the docs. When a reference
+and the docs disagree, follow the docs and the installed SDK.
 
 ## Four invariants
 
@@ -29,29 +41,33 @@ Before writing code:
    version. Do not upgrade it unless the user asks.
 3. Check whether `ZOOWORK_API_KEY` and `ZOOWORK_BASE_URL` are present without printing their values.
 4. Reuse the project's existing client and configuration style.
-5. Read the routed reference below. For an exact method or type, verify the installed declarations
-   or Python source as the final authority.
+5. Read the routed docs page and reference below. For an exact method or type, verify the
+   installed declarations or Python source as the final authority.
 
-If no project is present, state which package and runtime the example assumes. TypeScript requires
-Node.js 20+; Python requires Python 3.10+. Install the published package with
-`npm install @zoowork-ai/sdk` or `python -m pip install zoowork`. The public docs and these
-references assume `@zoowork-ai/sdk` 0.12.0+ and `zoowork` 0.7.0+; if an existing project pins an
-older release, say so and ask before upgrading.
+If no project is present, state which package and runtime the example assumes. Install the
+published package with `npm install @zoowork-ai/sdk` or `python -m pip install zoowork`. The
+Quickstart's Prerequisites section states the SDK releases and runtime versions the docs assume;
+read it rather than relying on a remembered version. If an existing project pins an older release,
+say so and ask before upgrading.
 
 ## Route by task
 
-| User intent | Read before acting |
-|---|---|
-| Set or clear Agent thinking, reasoning effort, model thinking capabilities, or Schedule thinking overrides | `references/thinking-levels.md`, then the language reference |
-| TypeScript method, option, return shape, Agent config, model, MCP, permission, Environment, channel, schedule, approval, artifact, `exec`, or `wake` | `references/typescript-sdk.md` |
-| Python import, snake_case method, return shape, event helper, custom tool, Session cursor, Agent config, MCP, or channel | `references/python-sdk.md` |
-| Sending a local file (PDF, image, CSV, any bytes) to an Agent, text task inputs, file outputs, Database availability, Usage, webhook registration/verification/delivery diagnostics, Run Output, or action paging/detail | `references/developer-api.md` |
-| Stream replies, reconnect, render events or tool calls, read/export history, or write Session events | `references/events-and-streaming.md` |
-| Host an Agent built locally, select its Skills, deploy one Agent per user, or keep one Skill synchronized across a fleet | `references/deploy-your-agent.md` — follow it in order |
-| Upload, version, list, or delete a platform Skill ZIP | `references/skill-registry.md` — check deployment support and the key's write scope |
-| Credentials, message attachments, repository mount, worker queues, cross-Agent Session listing, rollback, or another uncertain capability | `references/not-supported.md` — check before designing |
+Docs paths are relative to `https://zoowork.ai/docs/`.
 
-Read more than one reference only when the request genuinely crosses those boundaries. For example,
+| User intent | Docs page | Skill reference |
+|---|---|---|
+| First integration, API key, or funding | `get-started/quickstart.md`, `get-started/authentication.md` | - |
+| Set or clear Agent thinking, reasoning effort, model thinking capabilities, or Schedule thinking overrides | `build/agents.md`, `reference/models.md`, `build/schedules.md` | `references/thinking-levels.md`, then the language reference |
+| TypeScript method, option, return shape, Agent config, model, MCP, permission, Environment, channel, schedule, approval, artifact, `exec`, or `wake` | `reference/typescript-sdk.md`, plus the matching `build/` page | `references/typescript-sdk.md` |
+| Python import, snake_case method, return shape, event helper, custom tool, Session cursor, Agent config, MCP, or channel | `reference/python-sdk.md`, plus the Python tabs of the matching `build/` page | `references/python-sdk.md` |
+| Sending a local file (PDF, image, CSV, any bytes) to an Agent, text task inputs, file outputs, Database availability, Usage, webhook registration/verification/delivery diagnostics, Run Output, or action paging/detail | `build/files.md`, `build/data-storage.md`, `reference/usage.md`, `build/webhooks.md`, `build/session-operations.md` | `references/developer-api.md` |
+| Stream replies, reconnect, render events or tool calls, read/export history, or write Session events | `build/events.md`, `build/sessions.md`, `build/session-operations.md` | `references/events-and-streaming.md` |
+| Host an Agent built locally, select its Skills, deploy one Agent per user, or keep one Skill synchronized across a fleet | `build/per-user-agents.md`, `build/skills.md`, `build/agents.md` | `references/deploy-your-agent.md` — follow it in order |
+| Upload, version, list, or delete a platform Skill ZIP | `build/skills.md` | `references/skill-registry.md` — check deployment support and the key's write scope |
+| Error handling and retries | `reference/errors.md` | the language reference |
+| Credentials, message attachments, repository mount, worker queues, cross-Agent Session listing, rollback, or another uncertain capability | `reference/not-supported.md`, `reference/capabilities.md` | `references/not-supported.md` — check before designing |
+
+Read more than one page or reference only when the request genuinely crosses those boundaries. For example,
 a basic streaming chat needs the language reference plus events; it does not need the deployment or
 capability-boundary documents.
 

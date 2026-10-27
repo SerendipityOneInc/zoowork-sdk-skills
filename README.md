@@ -44,7 +44,7 @@ platform, so it earns its keep in *your* project.
 
 | Skill | What it gives an assistant |
 |---|---|
-| [`zoowork-managed-agents`](skills/zoowork-managed-agents/SKILL.md) | A task-first entrypoint for Agent setup and configuration, Sessions and events, platform Skills, deployment, and public capability boundaries; detailed contracts are loaded from references only when needed |
+| [`zoowork-managed-agents`](skills/zoowork-managed-agents/SKILL.md) | A task-first entrypoint for Agent setup and configuration, Sessions and events, platform Skills, deployment, and public capability boundaries; it routes each task to the matching page of the [public docs](https://zoowork.ai/docs/llms.txt), with references for SDK detail the docs do not yet cover |
 
 `zoowork-managed-agents` covers both official SDKs: TypeScript package `@zoowork-ai/sdk` and
 Python package `zoowork`. It keeps their camelCase and snake_case method names separate while
