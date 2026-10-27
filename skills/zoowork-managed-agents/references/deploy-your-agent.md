@@ -15,12 +15,12 @@ Map local inputs onto supported Platform resources before writing calls.
 
 | What you built locally | Where it goes | What to know |
 |---|---|---|
-| System prompt, persona file, `CLAUDE.md` / `AGENTS.md` | `resource.persona.docs[]` on `createAgent` | An array of `{ name, content }`, not a map. Editable later with `updateAgent` |
+| System prompt, persona file, `CLAUDE.md` / `AGENTS.md` | `resource.persona.docs[]` on `createAgent` | An array of `{ name, content }`, not a map. Only canonical names reach the model, so rename `CLAUDE.md` or a system prompt file to `AGENTS.md`. Editable later with `updateAgent` |
 | A skill directory containing `SKILL.md` | ZIP upload to the Skill registry, then an Agent binding | Check deployment support and Project write scope. Steps 4 and 5 |
 | Custom tool / function definitions | `resource.custom_tools`; your application handles `agent.custom_tool_use` and resolves the call | Verified in production with REST resolution and `user.custom_tool_result`. Keep a pending-call recovery loop |
 | Local text task data | A `user.message` in a Session | Read text in your application and include it in the message. Ask the Agent to create any needed files in `/workspace`; this is not a directory upload or mount |
 | Your chat UI | Stays yours | It talks to your backend, never to ZooWork. Step 9 |
-| Per-end-user secrets or accounts | **Nowhere.** Vaults and credential APIs do not exist | `references/not-supported.md` - Credentials |
+| Per-end-user secrets or accounts | **Nowhere.** Vaults and credential APIs do not exist | `references/not-supported.md` - End-user credential storage |
 
 Choose `sandbox.scope` at create time. Agent scope is required by `exec`. Session scope creates
 separate sandbox instances, while the Agent workspace remains shared. Use an Agent per user
@@ -62,8 +62,11 @@ and when existing Sessions receive a changed setting.
 ## Step 2. Create the agent
 
 `persona.docs` is where the local system prompt lands. Each entry is a named document the agent
-reads as standing instruction; give it the same name you used locally so the content stays
-recognizable in `getAgent().declared`.
+reads as standing instruction. Only these names are read when the prompt is assembled:
+`AGENTS.md`, `SOUL.md`, `TOOLS.md`, `IDENTITY.md`, `USER.md`, and `HEARTBEAT.md`. A document with
+any other name, such as `CLAUDE.md`, is saved but never reaches the model, so put the local system
+prompt in `AGENTS.md`. `MEMORY.md` and the `memory/` namespace are reserved and return
+`400 invalid_persona_doc_name`.
 
 `labels` earn their keep immediately: `listAgents({ labels })` filters on them server-side, which
 is how you find this agent again from a fresh process without a database.

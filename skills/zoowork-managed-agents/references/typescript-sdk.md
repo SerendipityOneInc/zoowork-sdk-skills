@@ -300,14 +300,16 @@ of them; pass it only when you intend to list non-API Sessions.
 
 ```ts
 postEvents(agentId: string, sessionId: string, events: OutboundEvent[]): Promise<{ events: PostEventReceipt[] }>
-listEvents(agentId: string, sessionId: string, opts?: { after?: number; cursor?: string; types?: string[]; limit?: number }): Promise<SessionEvent[]>
-listEventsPage(agentId: string, sessionId: string, opts?: { after?: number; cursor?: string; types?: string[]; limit?: number }): Promise<SessionEventPage>
+listEvents(agentId: string, sessionId: string, opts?: { cursor?: string; types?: string[]; limit?: number }): Promise<SessionEvent[]>
+listEventsPage(agentId: string, sessionId: string, opts?: { cursor?: string; types?: string[]; limit?: number }): Promise<SessionEventPage>
 listAllEvents(
   agentId: string,
   sessionId: string,
-  opts?: { after?: number; types?: string[]; pageSize?: number },
+  opts?: { cursor?: string; types?: string[]; pageSize?: number },
 ): Promise<SessionEvent[]>
-streamEvents(agentId: string, sessionId: string, opts?: { after?: number; cursor?: string; signal?: AbortSignal }): AsyncGenerator<SessionEvent>  // a generator, not a promise
+streamEvents(agentId: string, sessionId: string, opts?: { cursor?: string; signal?: AbortSignal }): AsyncGenerator<SessionEvent>  // a generator, not a promise
+// Each method also has a deprecated overload taking `after?: number` instead of `cursor`. `after`
+// selects the engine-only lane, never a unified `seq`. Passing both throws `TypeError`.
 ```
 
 Only five `OutboundEvent` types can be written: `user.message`, `user.interrupt`,
@@ -568,7 +570,7 @@ There is no credential API on the client: the gateway seeds model credentials it
 there is nothing for an API-key caller to store. One consequence: `McpServerDeclaration.credential`
 names a credential slug that is accepted and stored on the agent, but there is no endpoint to put
 the secret it points at, so an authenticated MCP server cannot be made to work - declare public
-servers only. See `references/not-supported.md` - Credentials and vaults.
+servers only. See `references/not-supported.md` - End-user credential storage.
 
 ## Errors
 
