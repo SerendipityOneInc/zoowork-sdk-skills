@@ -732,7 +732,7 @@
       "id": 17,
       "name": "lifecycle-tombstones-opt-out-timezone-and-usage-boundary",
       "prompt": "We are provisioning a TypeScript ZooWork agent for a Shanghai user. Pick an available model safely, disable the automatically attached global Skills, and write a reconciliation loop that includes deleted Sessions. Our admin UI also needs to show customers where to inspect API usage and cost. Give me the code and the supported product boundary.",
-      "expected_output": "Filter listModels rows by selectable, set userTimezone and include_global_skills on the Agent resource, use listSessionPage with includeDeleted while preserving cursor filters and recognize deleted tombstones, and explain that usage and cost reporting has no documented public API or public page without inventing either one.",
+      "expected_output": "Filter listModels rows by selectable, set userTimezone and include_global_skills on the Agent resource, use listSessionPage with includeDeleted while preserving cursor filters and recognize deleted tombstones, and report usage with getUsage within the current key scope, pointing to Platform at platform.zoowork.ai for Organization-wide cost without inventing another API or page.",
       "files": [],
       "assertions": [
         {
