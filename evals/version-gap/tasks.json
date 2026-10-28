@@ -1,0 +1,41 @@
+{
+  "pins": { "ts": "0.10.2", "py": "0.5.2" },
+  "tasks": [
+    {
+      "id": "ts-thinking",
+      "fixture": "ts",
+      "kind": "gap",
+      "feature": "model.thinking (TypeScript SDK 0.12.0)",
+      "request": "Our agent should use a high thinking level by default. It is created in src/setup.ts; change it there.",
+      "implemented": ["thinking"],
+      "files": ["src/setup.ts"]
+    },
+    {
+      "id": "ts-upload",
+      "fixture": "ts",
+      "kind": "gap",
+      "feature": "uploadFile (TypeScript SDK 0.11.0)",
+      "request": "src/analyze.ts asks our agent to analyze /workspace/sales.csv, but the agent never receives the file. Make the script send data/sales.csv to the agent before it asks.",
+      "implemented": ["uploadFile\\s*\\(", "\\.exec\\s*\\("],
+      "files": ["src/analyze.ts"]
+    },
+    {
+      "id": "py-upload",
+      "fixture": "py",
+      "kind": "gap",
+      "feature": "upload_file (Python SDK 0.6.0)",
+      "request": "analyze.py asks our agent to analyze /workspace/sales.csv, but the agent never receives the file. Make the script send data/sales.csv to the agent before it asks.",
+      "implemented": ["upload_file\\s*\\(", "\\.exec\\s*\\("],
+      "files": ["analyze.py"]
+    },
+    {
+      "id": "ts-control",
+      "fixture": "ts",
+      "kind": "control",
+      "feature": "waitUntilRunning (available in 0.10.2)",
+      "request": "src/setup.ts prints the agent ID right after creating it. Make it also start the agent and wait until it is running before printing the ID.",
+      "implemented": ["waitUntilRunning\\s*\\(", "desired_state"],
+      "files": ["src/setup.ts"]
+    }
+  ]
+}
