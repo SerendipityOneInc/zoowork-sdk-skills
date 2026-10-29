@@ -13,6 +13,7 @@ merely to answer a capability question.
 | TypeScript | Python | Public contract |
 |---|---|---|
 | `getUsage({ range?, groupBy?, view?, perPage?, snapshot?, cursor? })` | `get_usage(range=..., group_by=..., view=..., per_page=..., snapshot=..., cursor=...)` | GET /service/v1/usage; current key scope |
+| `getBalance()` | `get_balance()` | GET /service/v1/balance; Organization balance shared by all Projects |
 | `getRunOutput(agentId, sessionId, runId, { cursor?, limit? })` | `get_run_output(agent_id, session_id, run_id, cursor=..., limit=...)` | One run's output, with completion and paging metadata |
 | `getApproval(agentId, approvalId)` | `get_approval(agent_id, approval_id)` | Pending or terminal approval |
 | `getCustomToolCall(agentId, callId)` | `get_custom_tool_call(agent_id, call_id)` | Pending or terminal application-executed tool call |
@@ -32,9 +33,23 @@ Session dollar cap. Production invalid Usage parameters can return 422 with a `d
 and no business error type (for example an invalid range or page size), or 400
 `usage.invalid_query` for invalid timezone. Correct the query; do not retry unchanged.
 `credits` uses Platform credits, at 200 credits/USD. Key-scoped consumption is not the
-Organization balance or a complete Organization cost report; Organization admins see the balance
-and Organization-wide usage, including shared sandbox costs, in Platform at
-<https://platform.zoowork.ai>.
+Organization balance or a complete Organization cost report. Read the balance with `getBalance()` /
+`get_balance()`: any Platform key in the Organization, including a Project key, gets
+`{ object: 'balance', available_amount, currency: 'usd' }`. `available_amount` is a two-place USD
+string, not credits, and equals the Billing page's Current balance. It never goes below `"0.00"`,
+so `"0.00"` can also mean the Organization is overdrawn; treat it as "no funds", not as an exact
+debt. Do not subtract Usage from an earlier balance to estimate it. Top-ups and Organization-wide
+usage, including shared sandbox costs, stay in Platform at <https://platform.zoowork.ai>.
+
+Handle balance errors by status and code; only the 5xx codes are worth retrying:
+
+| HTTP / code | Action |
+|---|---|
+| 409 `platform.billing_not_ready` | Ask the user to finish Organization billing setup in Platform. |
+| 409 `platform.billing_account_conflict` | Do not retry; the Organization needs ZooWork support. |
+| 403 `balance.access_denied` | The key's Organization or owner is no longer active. |
+| 502 `platform.billing_unavailable` | Retry later with backoff; never treat it as a zero balance. |
+| 503 `platform.billing_storage_unavailable` | Retry later with backoff. |
 
 Action lists allow omitted or pending status. Original list methods still return arrays; page
 methods opt into pagination and retain metadata. Detail reads do not require pending status.

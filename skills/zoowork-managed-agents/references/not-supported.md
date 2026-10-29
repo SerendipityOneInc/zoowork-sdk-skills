@@ -14,8 +14,9 @@ action detail/paging. Their Database viewer helpers exist, but the production vi
 
 ## Programmatic usage and cost reporting
 
-`getUsage` / `get_usage` query `/service/v1/usage` within the current key scope. Preserve
-snapshot and cursor tokens and distinguish reporting from a spending limit. The Session API
+`getUsage` / `get_usage` query `/service/v1/usage` within the current key scope; the Organization
+balance is readable too. Preserve snapshot and cursor tokens and distinguish reporting from a
+spending limit. The Session API
 has no per-session dollar cap or pause/resume budget contract. See `developer-api.md`.
 
 ## Application-executed custom tools
