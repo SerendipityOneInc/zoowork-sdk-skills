@@ -1,0 +1,17 @@
+{
+  "name": "sales-insights",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "node src/setup.ts",
+    "analyze": "node src/analyze.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@zoowork-ai/sdk": "0.10.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "typescript": "5.6.3"
+  }
+}
