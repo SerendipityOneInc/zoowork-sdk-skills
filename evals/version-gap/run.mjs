@@ -10,6 +10,7 @@
 // from the cache on 127.0.0.1, so every arm reads the same snapshot of the site. ZOOWORK_API_KEY
 // is a dummy value and nothing calls a ZooWork API; the runs only spend model tokens.
 import { execFileSync, spawn } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -114,7 +115,8 @@ function setupWorkspace(ws, arm, task) {
 }
 
 function runAgent(agent, ws, runDir, prompt) {
-  const env = { ...process.env, ZOOWORK_API_KEY: `zwp_live_evaldummy${Math.random().toString(16).slice(2, 14)}` }
+  // A dummy key in the Platform key format. It is never valid; no run calls a ZooWork API.
+  const env = { ...process.env, ZOOWORK_API_KEY: `zwp_live_evaldummy${randomBytes(6).toString('hex')}` }
   delete env.ZOOWORK_BASE_URL
   let cmd
   let argv
