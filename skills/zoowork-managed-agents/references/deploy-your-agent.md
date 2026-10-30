@@ -127,8 +127,16 @@ syntax: exact names, global `*`, or one trailing `prefix*` work in allow/deny/ru
 and deferred MCP pinned entries. Other `*` placements match nothing, and `alsoAllow` remains
 exact-only. Production checks verified exact-name `allow` and `deny` lists removing tools from a
 turn, and `permissions: { exec: 'always_ask' }` gating a call; the wildcard forms are
-source-reviewed. After provisioning, run a turn that should be blocked and inspect `agent.tool`
+source-reviewed. A policy the runtime cannot parse - an invalid regular expression, an unknown
+rule action, a rule without `id`, non-array `rules`, more than 64 rules or more than 32 KiB - is
+rejected at write time with `400 invalid_request` naming the field, so fix the policy rather than
+retrying the call. After provisioning, run a turn that should be blocked and inspect `agent.tool`
 instead of treating a successful create as proof the policy took effect.
+
+A hosted Agent can rewrite its own persona documents through the `persona_doc_update` tool, and
+later turns read them as instructions. Add `persona_doc_update: 'always_ask'` to
+`tool_policy.permissions` to review each change, and deny `cron` unless the Agent should manage
+its own schedules.
 
 ---
 
@@ -146,10 +154,10 @@ const running = await zc.waitUntilRunning(agentId, { timeoutMs: 60_000 })
 console.log(running.status?.desired_state) // 'running'
 ```
 
-Do not hand-roll this loop. The readable-looking field, `status.actual_state`, is a best-effort
-chat-channel health projection: unsupported route-status can produce `active` with zero channel
-counts, while a transient query failure can remain `activating`, and list/GET may briefly differ.
-`running` is not one of its values. `waitUntilRunning` polls `desired_state`, bounds each in-flight
+Do not hand-roll this loop. The readable-looking field, `status.actual_state`, is not readiness:
+an enabled Agent with a rendered config reports `active` whether or not a channel is connected or
+a turn can run, and `status.channels` holds fixed placeholder counts. `running` is not one of its
+values. `waitUntilRunning` polls `desired_state`, bounds each in-flight
 request as well as the gap between polls, and throws a `ZooworkError` with
 `status: 408` / `type: 'timeout'` when the budget runs out.
 
@@ -280,7 +288,8 @@ console.log(stored.schedule_id, stored.enabled, stored.scheduleSpec?.cronExpress
 
 Three things to know before you rely on this:
 
-- **Schedules outlive their agent.** `stopAgent` and `deleteAgent` leave them in place. You list and
+- **Schedules outlive their agent.** `stopAgent` and `deleteAgent` leave them in place. While the
+  Agent is stopped or deleted, each fire is skipped with reason `runtime_stopped`. You list and
   delete them yourself - see Step 10.
 - **A `getSchedule()` result is not a legal PUT body.** Four of its fields are server-derived and
   answer 400, `sessionTarget` is `400 sessionTarget is immutable`, and `scheduleSpec` - the only
@@ -369,15 +378,15 @@ Order matters: `deleteAgent` is a soft delete, not proof that schedules and sand
 have been cleaned up. Stop and explicitly manage the resources your experiment owns.
 
 ```ts
-// 1. Schedules first - they outlive the agent, and after deletion you still need agentId to
-//    address them, but a deleted agent's schedules go on firing.
+// 1. Schedules first - they outlive the agent, and after deletion its schedule routes
+//    answer 404, so you can no longer delete them.
 for (const s of await zc.listSchedules(agentId)) {
   const id = s.schedule_id ?? s.name ?? (s.memo?.schedule_id as string | undefined)
   if (id) await zc.deleteSchedule(agentId, id)
 }
 
-// 2. Stop. If this throws after desired state was written, read getAgent and reconcile.
-//    Do not treat either stop or soft deletion as proof of sandbox release.
+// 2. Stop. This cancels running work and blocks new Sessions; it does not destroy the sandbox.
+//    If this throws after desired state was written, read getAgent and reconcile.
 await zc.stopAgent(agentId)
 
 // 3. Delete the agent.

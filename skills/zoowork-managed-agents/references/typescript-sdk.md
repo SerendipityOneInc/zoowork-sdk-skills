@@ -3,6 +3,7 @@
 Client methods are grouped below. The installed package's `dist/index.d.ts` is the authority
 for signatures, not deployment availability. Apply the production restrictions below first. Read `developer-api.md` for text task inputs, file outputs, Database, Usage, Organization balance, Run Output,
 action paging and signed webhook helpers, including release checks and HTTP fallback.
+From 0.14.0 the package requires Node.js 22 or later (`engines.node` is `>=22`).
 
 ## Client construction
 
@@ -35,6 +36,9 @@ and redelivery require a stable explicit key.
 Sending a header is not an exactly-once guarantee. Source-reviewed creation contracts use HTTP
 keys for Agent and Session; schedules converge on stable IDs and identical definitions;
 Skill uploads carry the key but do not guarantee replay; see [Skill registry](./skill-registry.md).
+A key replays the first response for at least 7 days on `createAgent` and at least 24 hours on
+`createSession`, webhook writes and other keyed writes; after that the same key runs as a new
+request, so a create retried that late makes a second Agent or Session.
 `postEvents` uses an `idempotency_key` inside each event body instead.
 
 ## Models
@@ -221,9 +225,12 @@ treats server 408s specially: a spent budget throws `408` with `type: 'timeout'`
 `signal` throws `0` with `type: 'aborted'`. Both bounds cover an in-flight poll, not just the gap
 between polls, which is why this beats a hand-rolled loop - `fetch` imposes no timeout of its own in
 any runtime the SDK targets, so a stalled gateway parks such a loop forever. The other reason is
-`actual_state`: it is a best-effort chat-channel health projection, not API readiness. Unsupported
-route-status can project `active` with zero channel counts; a transient query failure can remain
-`activating`, and list/GET may briefly differ. `running` is not one of its values.
+`actual_state`: it is not API readiness. An enabled Agent with a rendered config reports `active`,
+a failed render reports `error`, and it reflects neither channel health nor whether a turn can run.
+`status.channels` (`expected`, `connected`, `degraded_since`) holds fixed placeholder values
+(`0`, `0`, `null`), not observed channel counts. `running` is not one of its values. `status` can
+also carry optional `agent_desired_state` and `computer_desired_state`: the Agent's own switch
+and its sandbox runtime's switch. `desired_state` is `running` only when both are.
 
 Successful start/stop responses may contain warnings, but HTTP and transport failures still throw.
 Source-reviewed stop behavior can write desired state before a later step fails: read `getAgent`
@@ -309,7 +316,8 @@ listAllEvents(
 ): Promise<SessionEvent[]>
 streamEvents(agentId: string, sessionId: string, opts?: { cursor?: string; signal?: AbortSignal }): AsyncGenerator<SessionEvent>  // a generator, not a promise
 // Each method also has a deprecated overload taking `after?: number` instead of `cursor`. `after`
-// selects the engine-only lane, never a unified `seq`. Passing both throws `TypeError`.
+// selects the engine-only lane, never a unified `seq`. Both together do not type-check; at runtime
+// `listAllEvents` throws `TypeError` and the server answers the others with 400 invalid_request.
 ```
 
 Only five `OutboundEvent` types can be written: `user.message`, `user.interrupt`,
@@ -324,7 +332,8 @@ feed `nextCursor` back as `cursor` to page by hand. `listAllEvents` follows the 
 the end of the log, falling back to an `after` walk on servers without cursor pagination; both
 lanes stop when the cursor fails to advance, and results are ascending by `seq`, deduplicated
 across page boundaries. Passing `after` anywhere selects the deprecated engine-only lane (no echoed
-inputs) - old stored cursors only.
+inputs); use it only with a value stored from that lane, never with `event.seq`. From 0.13.0
+`listAllEvents` accepts `{ cursor }` and starts the unified walk after it.
 
 `streamEvents` opens exactly one request and yields until the body ends. It does **not** reconnect,
 retry or back off; when the server closes on idle the generator returns, and resuming is your loop
@@ -448,7 +457,8 @@ is fixed to skip server-side, so a fire landing on a still-running one is droppe
 definition; an identical retry is accepted. PUT and DELETE carry no cross-timeout idempotency
 guarantee - after a timeout, reconcile by listing and reading runs rather than blind-retrying.
 **Schedules outlive their agent**: neither `stopAgent` nor `deleteAgent` removes them, so delete
-them yourself first or they keep firing against a deleted agent. `triggerSchedule` returns
+them yourself first. While the Agent is stopped or deleted, each fire is skipped with reason
+`runtime_stopped` instead of running a turn. `triggerSchedule` returns
 `triggered: true` even for a **disabled** schedule, which is then skipped. Manual execution
 requires `enabled: true`; enabling also activates automatic firings. The receipt means a
 request was accepted, not that work ran. Read `listScheduleRuns` and follow schedule webhooks;
@@ -620,3 +630,9 @@ an inaccessible resource: reconcile cleanup only for a known Agent with unchange
 Concurrent `createAgent` calls in one Organization can return
 `503 platform.runtime_credentials_unavailable` with `retryable: true`. The Agent was not created;
 create Agents serially and retry with backoff and the same idempotency key.
+
+`startAgent` can return `409 runtime_credential_unavailable` when the Agent's runtime credential
+is missing or revoked. Project keys have no route that repairs it, so do not retry the start in a
+loop. A request can return `409 database_conflict` when it loses a lock conflict with a
+concurrent request: the transaction was rolled back, but earlier steps may have been applied.
+Read the resource state before deciding whether to retry.

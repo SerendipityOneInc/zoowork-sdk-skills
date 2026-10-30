@@ -237,6 +237,7 @@ const created = await zc.createAgentWebhook(agentId, {
 // Store a non-null signing_secret securely; never log it.
 const page = await zc.listAgentWebhooks(agentId) // page.webhooks
 const receipt = await zc.testAgentWebhook(agentId, created.endpoint.id, 'test-hook-v1')
+// receipt.receipt_id identifies this test. Filter by it where the SDK supports it (below).
 const deliveries = await zc.listAgentWebhookDeliveries(agentId, created.endpoint.id, {
   eventType: 'webhook.test',
 })
@@ -260,7 +261,13 @@ revocation; do not assume every successful response provides usable plaintext. R
 revoke_previous_after of 0 or 86400. Endpoint updates and deletion use POST action paths.
 
 A 202 receipt acknowledges queuing, not delivery or business processing. Query delivery list/detail
-for attempts and outcome. Delivery filters include status, event type/id, session, run and schedule.
+for attempts and outcome. Delivery filters include status, event type/id, receipt, session, run and
+schedule. To poll for one test, filter by the `receipt_id` the test call returned: the
+`receipt_id` query parameter of the delivery list. `event_type=webhook.test` alone also matches
+other tests on the same endpoint. Check the installed SDK declarations for a `receiptId` /
+`receipt_id` delivery-list option before using it; without one, call the route directly or match
+`webhook.test` deliveries only when no other test can run concurrently. The cursor is bound to
+the filter set, so keep filters unchanged while paging.
 Endpoint list filters are only cursor/limit. Preserve cursor timestamps without parsing them.
 Batch redelivery selects dead deliveries and accepts since, event_types and a limit.
 
