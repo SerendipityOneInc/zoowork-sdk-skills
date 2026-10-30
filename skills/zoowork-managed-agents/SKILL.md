@@ -41,7 +41,12 @@ Before writing code:
    version. Do not upgrade it unless the user asks.
 3. Check whether `ZOOWORK_API_KEY` and `ZOOWORK_BASE_URL` are present without printing their values.
 4. Reuse the project's existing client and configuration style.
-5. Read the routed docs page and reference below. For an exact method or type, verify the
+5. If the installed package ships `AGENTS.md` and `CHANGELOG.md` (TypeScript 0.14.0+:
+   `node_modules/@zoowork-ai/sdk/dist/AGENTS.md` and `node_modules/@zoowork-ai/sdk/CHANGELOG.md`;
+   Python 0.9.0+: `AGENTS.md` and `CHANGELOG.md` inside the installed `zoowork` package), read
+   them. When the docs rely on a method the installed release lacks, tell the user which release
+   adds it instead of upgrading silently.
+6. Read the routed docs page and reference below. For an exact method or type, verify the
    installed declarations or Python source as the final authority.
 
 If no project is present, state which package and runtime the example assumes. Install the
@@ -58,14 +63,16 @@ Docs paths are relative to `https://zoowork.ai/docs/`.
 |---|---|---|
 | First integration, API key, or funding | `get-started/quickstart.md`, `get-started/authentication.md` | - |
 | Set or clear Agent thinking, reasoning effort, model thinking capabilities, or Schedule thinking overrides | `build/agents.md`, `reference/models.md`, `build/schedules.md` | `references/thinking-levels.md`, then the language reference |
-| TypeScript method, option, return shape, Agent config, model, MCP, permission, Environment, channel, schedule, approval, artifact, `exec`, or `wake` | `reference/typescript-sdk.md`, plus the matching `build/` page | `references/typescript-sdk.md` |
+| TypeScript method, option, return shape, Agent config, model, MCP, Environment, channel, schedule, artifact, `exec`, or `wake` | `reference/typescript-sdk.md`, plus the matching `build/` page | `references/typescript-sdk.md` |
+| Approvals, `always_ask` / `always_allow`, or MCP permission defaults | `build/permissions.md`, `build/tools.md` | the language reference |
+| Securing a deployment, prompt injection, data boundaries, or monitoring Sessions for misuse | `security/secure-deployment.md`, `security/risks-and-boundaries.md`, `security/monitor-sessions.md` | - |
 | Python import, snake_case method, return shape, event helper, custom tool, Session cursor, Agent config, MCP, or channel | `reference/python-sdk.md`, plus the Python tabs of the matching `build/` page | `references/python-sdk.md` |
 | Sending a local file (PDF, image, CSV, any bytes) to an Agent, text task inputs, file outputs, Database availability, Usage, Organization balance, webhook registration/verification/delivery diagnostics, Run Output, or action paging/detail | `build/files.md`, `build/data-storage.md`, `reference/usage.md`, `build/webhooks.md`, `build/session-operations.md` | `references/developer-api.md` |
 | Stream replies, reconnect, render events or tool calls, read/export history, or write Session events | `build/events.md`, `build/sessions.md`, `build/session-operations.md` | `references/events-and-streaming.md` |
 | Host an Agent built locally, select its Skills, deploy one Agent per user, or keep one Skill synchronized across a fleet | `build/per-user-agents.md`, `build/skills.md`, `build/agents.md` | `references/deploy-your-agent.md` — follow it in order |
 | Upload, version, list, or delete a platform Skill ZIP | `build/skills.md` | `references/skill-registry.md` — check deployment support and the key's write scope |
 | Error handling and retries | `reference/errors.md` | the language reference |
-| Credentials, message attachments, repository mount, worker queues, cross-Agent Session listing, rollback, or another uncertain capability | `reference/not-supported.md`, `reference/capabilities.md` | `references/not-supported.md` — check before designing |
+| Credentials, message attachments, repository mount, worker queues, cross-Agent Session listing, rollback, or another uncertain capability | Credentials: `security/secure-deployment.md`, `build/mcp.md`. Attachments and repository mount: `build/files.md`. Worker queues: `build/environments.md`. Session listing: `build/session-operations.md`. Rollback: `build/agents.md`. Otherwise `reference/capabilities.md` | `references/not-supported.md` — check before designing |
 
 Read more than one page or reference only when the request genuinely crosses those boundaries. For example,
 a basic streaming chat needs the language reference plus events; it does not need the deployment or
@@ -233,7 +240,10 @@ Do not run live, billable, or tenant-mutating calls merely to answer a design qu
 ## Common pitfalls
 
 - Set reasoning through `model.thinking`, not provider fields such as `reasoning_effort`. Agent `null` clears the declaration; Schedule `payload.thinking: null` clears only its override. Read `references/thinking-levels.md` before choosing a level.
-- Wait on `desired_state`, never `actual_state`; the latter is a chat-channel health projection.
+- Wait on `desired_state`, never `actual_state`. `actual_state` reports `active` for an enabled
+  Agent with a rendered config; it is not channel health or execution readiness, and
+  `status.channels` counts are fixed placeholders. The optional `agent_desired_state` and
+  `computer_desired_state` fields show the two switches behind `desired_state`.
 - Platform uses a managed Environment. Project keys do not administer root Environments.
 - `createAgent` and `getAgent` return different shapes.
 - Agent updates accept optional positive `expected_config_version` for an atomic precondition.
@@ -241,9 +251,28 @@ Do not run live, billable, or tenant-mutating calls merely to answer a design qu
   `409 active_config_changed`: re-read and recompute before retrying. Omit it for last-write-wins.
 - MCP exposure, runtime context, and permission policy are separate controls.
 - Tool-policy wildcards allow an exact name, global `*`, or one trailing `prefix*` only.
+- A `tool_policy` the runtime cannot parse is rejected with `400 invalid_request` on every write
+  that renders the Agent config, including create and update: an invalid regular expression, an
+  unknown action, a rule without `id`, non-array `rules`, more than 64 rules, or more than 32 KiB.
+  The message names the field. A stored policy that fails keeps later writes failing until an
+  update sends a corrected full `tool_policy`.
+- To review persona changes, set `tool_policy.permissions.persona_doc_update` to `always_ask`.
+  Deny `cron` unless the Agent must manage its own schedules. A pending approval is denied after
+  ten minutes, and an `allow-always` decision on a server-wide MCP default can cover the server's
+  other tools for the rest of the Session.
+- Treat web pages, files and MCP or custom tool results as untrusted input that can carry prompt
+  injection; limit tools and require approvals instead of relying on the model to ignore it.
+  Artifact download URLs work for anyone who holds them; keep them out of logs.
 - There is no public credential store for an end user's secret.
 - Match `ZooworkError.status` and `.type`, not message text. Usage validation can return 422
   with no business type; invalid timezone can return 400 `usage.invalid_query`.
+- `409 database_conflict` means the request lost a lock conflict and earlier steps may have been
+  applied. Re-read the resource, then decide whether to retry. `startAgent` can return
+  `409 runtime_credential_unavailable` when the Agent's runtime credential is missing or revoked;
+  Project keys cannot repair credentials, so do not loop on start.
+- An `Idempotency-Key` replays the first response for at least 7 days on Agent creation and at
+  least 24 hours on Session creation, webhook writes and other keyed writes. After that, the same
+  key runs as a new request, so a late Agent-create retry can make a second Agent.
 - A cross-tenant or unknown identifier can return 404 rather than 403. Repeated Agent deletion
   also returns 404 after the first 204; treat it as cleanup complete only for your known Agent
   with unchanged key scope.
@@ -258,9 +287,11 @@ Do not run live, billable, or tenant-mutating calls merely to answer a design qu
   default `urllib` User-Agent (`Python-urllib/...`) with `403` and the body `error code: 1010`.
   That is not an API-key error; set an explicit `User-Agent` header if you must use `urllib`.
 - `exec(agentId, args)` takes argv. A non-zero process exit can still be HTTP 200.
-- To remove a throwaway Agent, delete its schedules, call `stopAgent`, then `deleteAgent`.
-  Deletion alone neither stops the sandbox nor removes schedules. If the stop fails, read
-  `getAgent` and retry the stop before deleting; a deleted Agent cannot be stopped later.
+- `stopAgent` cancels running work and blocks new Sessions and turns; it does not destroy the
+  sandbox. Schedules stay defined, and each fire is skipped with reason `runtime_stopped` while
+  the Agent is stopped. To remove a throwaway Agent, delete its schedules, call `stopAgent`, then
+  `deleteAgent`; deletion does not remove schedules. If the stop fails, read `getAgent` and retry
+  the stop before deleting; a deleted Agent cannot be stopped later.
 - Do not mix TypeScript camelCase with Python snake_case. Treat identifiers, cursors, and unknown
   response fields as opaque.
 

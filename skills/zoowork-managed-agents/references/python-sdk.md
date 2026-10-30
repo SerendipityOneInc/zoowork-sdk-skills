@@ -1,10 +1,10 @@
 # Python SDK surface
 
-The official package is `zoowork`. It supports Python 3.10+, is asynchronous, uses `httpx`, and
-keeps public request and response fields in their wire spelling. Client methods and event helpers
-use snake_case. Do not mechanically translate payload keys: `custom_tools`, `input_schema`, and
-`pending_custom_tool_calls` are snake_case, while the declared timeout remains `timeoutMs` because
-that is the public wire field.
+The official package is `zoowork`. It requires Python 3.11+ (zoowork 0.9.0+; older releases
+supported 3.10), is asynchronous, uses `httpx`, and keeps public request and response fields in
+their wire spelling. Client methods and event helpers use snake_case. Do not mechanically
+translate payload keys: `custom_tools`, `input_schema`, and `pending_custom_tool_calls` are
+snake_case, while the declared timeout remains `timeoutMs` because that is the public wire field.
 
 The package exports `create_zoowork_client`, `ZooworkClient`, `ZooworkError`, page and custom-tool
 types, `SessionEvent`, `ToolCall`, `CustomToolUse`, the two event vocabularies, event helpers, and
@@ -94,8 +94,16 @@ async for event in client.stream_events(agent_id, session["session_id"]):
 The stream is Session-scoped and does not close at turn end. Break on `is_run_finished()`. Resume
 by passing `cursor=cursor`; the cursor is opaque. `list_events()` returns one page,
 `list_events_page()` keeps `has_more` and `next_cursor`, and `list_all_events()` follows pagination
-for you. The normalized event uses `event.event_type`, `event.run_id`, `event.processed_at`, and
-`event.created_at`.
+for you. From 0.8.0, `list_all_events(agent_id, session_id, cursor=saved)` starts the walk after a
+saved cursor and never falls back to the `after` lane. The normalized event uses
+`event.event_type`, `event.run_id`, `event.processed_at`, and `event.created_at`.
+
+Each of `list_events`, `list_events_page`, `list_all_events` and `stream_events` also has a
+deprecated `after=` overload, which type checkers flag from 0.8.0. It reads the engine-only lane,
+whose numbering differs from `event.seq` and which omits your inputs, so `after=event.seq`
+silently skips and renumbers events. Use `cursor`. Passing both `cursor` and `after` does not
+type-check; `list_all_events` raises `TypeError` before any request, and the server rejects the
+combination on the other methods with `400 invalid_request`.
 
 Five write-side types exist: `user.message`, `user.interrupt`, `user.tool_confirmation`,
 `user.custom_tool_result`, and `system.message`. Give retryable events a stable
@@ -265,3 +273,11 @@ for a known Agent under unchanged key scope; inaccessible resources also return 
 Concurrent `create_agent` calls in one Organization can raise `ZooworkError` with status 503 and
 type `platform.runtime_credentials_unavailable`. No Agent was created; create Agents serially and
 retry with backoff and the same `idempotency_key`.
+
+`start_agent` can raise status 409 with type `runtime_credential_unavailable` when the Agent's
+runtime credential is missing or revoked; Project keys have no route that repairs it, so do not
+retry the start in a loop. Status 409 with type `database_conflict` means the request lost a lock
+conflict and earlier steps may have been applied: read the resource state before deciding
+whether to retry. An `idempotency_key` replays the first response for at least 7 days on
+`create_agent` and at least 24 hours on `create_session` and webhook writes; after that, the same
+key runs as a new request.

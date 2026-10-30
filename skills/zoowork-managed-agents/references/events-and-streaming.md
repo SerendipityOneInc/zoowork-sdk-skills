@@ -171,8 +171,9 @@ console.log(outcome, text.trim(), failedTools)
 
 Mechanics worth knowing:
 
-- `{ cursor }` resumes from right after that event. `{ after: seq }` still works but selects the
-  deprecated engine-only lane (no echoed inputs) - keep it for old stored cursors only.
+- `{ cursor }` resumes from right after that event. Never pass `event.seq` as `after`: `after`
+  is a deprecated lane with its own numbering and no echoed inputs, so a unified `seq` there
+  silently skips and renumbers events. Use `after` only with a value you stored from that lane.
 - Aborting the signal ends the generator cleanly - the SDK swallows its own abort and returns
   instead of throwing, so you do not need a `catch` for your own cancellation. The flip side is in
   Reconnecting: a clean end no longer tells you which of the two things happened.
@@ -273,7 +274,8 @@ A non-2xx stream open uses the same HTTP error parser as other methods: `Zoowork
 can carry `type`, `requestId` and diagnostic fields. Keep a status-only fallback for non-JSON
 responses. When calling the public endpoint directly, use `?cursor=`: the public gateway
 does not forward `Last-Event-ID`, so native EventSource header replay is not sufficient.
-`?after=<seq>` selects the deprecated engine-only lane and omits echoed inputs.
+`?after=` selects the deprecated engine-only lane and omits echoed inputs; never put a unified
+`seq` there.
 
 ---
 
@@ -299,8 +301,10 @@ const userAndReplies = await zc.listAllEvents(agentId, sessionId, {
 advance, so a misbehaving server costs one extra request instead of a spin. `types` is joined into
 one comma-separated query parameter and filtered server-side; valid members are
 `SESSION_EVENT_TYPES` plus `PUBLIC_INPUT_EVENT_TYPES`, anything else is `400 invalid_request`.
-Passing `after` anywhere selects the deprecated engine-only lane (no echoed inputs) - old stored
-cursors only.
+Passing `after` anywhere selects the deprecated engine-only lane (no echoed inputs); use it only
+with a value stored from that lane, never with `event.seq`. `listAllEvents` also accepts
+`{ cursor }` (TypeScript 0.13.0+, Python 0.8.0+) and starts the unified walk after it, without
+falling back to `after`. Passing both `cursor` and `after` throws `TypeError` before any request.
 
 ### When the transcript is the better read
 
