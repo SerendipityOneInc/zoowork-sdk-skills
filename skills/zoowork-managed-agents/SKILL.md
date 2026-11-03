@@ -252,7 +252,8 @@ Do not run live, billable, or tenant-mutating calls merely to answer a design qu
 - MCP exposure, runtime context, and permission policy are separate controls.
 - Tool-policy wildcards allow an exact name, global `*`, or one trailing `prefix*` only.
 - A `tool_policy` the runtime cannot parse is rejected with `400 invalid_request` on every write
-  that renders the Agent config, including create and update: an invalid regular expression, an
+  that renders the Agent config, including create and update: an `argsPattern`/`resultPattern`
+  that is not RE2 (no lookaround, backreferences or inline flags; at most 512 characters), an
   unknown action, a rule without `id`, non-array `rules`, more than 64 rules, or more than 32 KiB.
   The message names the field. A stored policy that fails keeps later writes failing until an
   update sends a corrected full `tool_policy`.
