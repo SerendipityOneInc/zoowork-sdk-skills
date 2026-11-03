@@ -225,8 +225,8 @@ treats server 408s specially: a spent budget throws `408` with `type: 'timeout'`
 `signal` throws `0` with `type: 'aborted'`. Both bounds cover an in-flight poll, not just the gap
 between polls, which is why this beats a hand-rolled loop - `fetch` imposes no timeout of its own in
 any runtime the SDK targets, so a stalled gateway parks such a loop forever. The other reason is
-`actual_state`: it is not API readiness. An enabled Agent with a rendered config reports `active`,
-a failed render reports `error`, and it reflects neither channel health nor whether a turn can run.
+`actual_state`: it is not API readiness. It is derived from `desired_state` and reads `active`,
+`stopped` or `deleting`; it reflects neither channel health nor whether a turn can run.
 `status.channels` (`expected`, `connected`, `degraded_since`) holds fixed placeholder values
 (`0`, `0`, `null`), not observed channel counts. `running` is not one of its values. `status` can
 also carry optional `agent_desired_state` and `computer_desired_state`: the Agent's own switch

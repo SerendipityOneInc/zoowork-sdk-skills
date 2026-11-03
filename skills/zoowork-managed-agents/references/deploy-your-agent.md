@@ -127,11 +127,12 @@ syntax: exact names, global `*`, or one trailing `prefix*` work in allow/deny/ru
 and deferred MCP pinned entries. Other `*` placements match nothing, and `alsoAllow` remains
 exact-only. Production checks verified exact-name `allow` and `deny` lists removing tools from a
 turn, and `permissions: { exec: 'always_ask' }` gating a call; the wildcard forms are
-source-reviewed. A policy the runtime cannot parse - an invalid regular expression, an unknown
-rule action, a rule without `id`, non-array `rules`, more than 64 rules or more than 32 KiB - is
-rejected at write time with `400 invalid_request` naming the field, so fix the policy rather than
-retrying the call. After provisioning, run a turn that should be blocked and inspect `agent.tool`
-instead of treating a successful create as proof the policy took effect.
+source-reviewed. A policy the runtime cannot parse - an `argsPattern` or `resultPattern` that is
+not RE2 syntax (lookaround, backreferences and inline flags are rejected; at most 512 characters),
+an unknown rule action, a rule without `id`, non-array `rules`, more than 64 rules or more than
+32 KiB - is rejected at write time with `400 invalid_request` naming the field, so fix the policy
+rather than retrying the call. After provisioning, run a turn that should be blocked and inspect
+`agent.tool` instead of treating a successful create as proof the policy took effect.
 
 A hosted Agent can rewrite its own persona documents through the `persona_doc_update` tool, and
 later turns read them as instructions. Add `persona_doc_update: 'always_ask'` to
