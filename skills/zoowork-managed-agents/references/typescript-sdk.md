@@ -112,7 +112,7 @@ optional except `name: string`:
 | `userTimezone` | `string` | named IANA timezone used in prompt context and message timestamps; it does not set Schedule timezone |
 | `model` | `{ primary: string; input?: string[]; max_tokens?: number; thinking?: ThinkingLevel \| null }` | prefixed id from `listModels()`; `max_tokens` caps output per model request (omit for the platform default) |
 | `persona` | `{ docs: { name: string; content: string; seed_policy?: string }[] }` | `docs` is an **array of documents**, not a filename-keyed object |
-| `skills` | `{ skill_id: string; version?: number \| 'latest' }[]` | explicit installs; an empty array at create opts out of automatic global Skills |
+| `skills` | `{ skill_id: string; version?: number \| 'latest' }[]` | explicit installs; each stays on the version resolved at create, even `'latest'`; an empty array at create opts out of automatic global Skills; do not add `name` (it makes the list the exact Skill set and later assignments return 409) |
 | `include_global_skills` | `boolean` | defaults true; false disables automatic global Skills without removing explicit installs, and persists across updates and rerenders |
 | `labels` | `Record<string, string>` | what `listAgents({ labels })` filters on |
 | `tool_policy` | `Record<string, unknown>` | exact-name `allow`/`deny` verified in production; matching also accepts global `*` or one trailing `prefix*` (source-reviewed); `alsoAllow` remains exact-only |

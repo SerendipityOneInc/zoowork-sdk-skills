@@ -229,8 +229,10 @@ same contract cautions as TypeScript: `tool_policy` and array-valued sections re
 values; `config_version` increments but is not a rollback handle.
 
 `include_global_skills` defaults to true. False disables automatic global Skills without removing
-explicit installs and persists across updates and rerenders. An explicit empty `skills` list at
-create also opts out.
+explicit installs and persists across updates and rerenders. An empty `skills` list at create also
+opts out. Each create-time `skills` entry needs `skill_id` and stays on the version resolved at
+creation; an entry with `name` makes the list the exact Skill set (no global Skills, later
+assignments return `409 source_owned_skills`).
 
 MCP `context.meta` and `context.headers` explicitly opt runtime identifiers into calls; they are
 not authentication. `permission` sets `always_ask` or `always_allow` for the server, and `tools`
