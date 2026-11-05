@@ -200,10 +200,15 @@ events reference before implementing recovery.
 A ZooWork platform Skill is attached to a running Agent. It is different from this coding-agent
 skill, which teaches a developer's assistant how to call ZooWork.
 
-- New Agents receive global Skills by default. Set `include_global_skills: false` or an explicit
-  empty Skill list to opt out.
-- Create bindings accept catalog `name` or `skill_id`; inspect `listAgentSkills` / `list_agent_skills`
-  to see the resolved assignment.
+- New Agents receive global Skills by default. Set `include_global_skills: false` or pass
+  `skills: []` to opt out.
+- Every create-time `skills` entry needs `skill_id` (a `name`-only entry returns 400) and stays on
+  the version resolved at creation, even with `version: 'latest'`. Do not add `name` to an entry:
+  it makes the list the Agent's exact Skill set, drops global Skills even with
+  `include_global_skills: true`, and makes later assignment calls return `409 source_owned_skills`.
+- To add a Skill that should follow new versions, create the Agent without it, then assign it
+  with no version pin. To replace one global Skill, assign it with `enabled: false`. Inspect
+  `listAgentSkills` / `list_agent_skills` to see the resolved set.
 - The source-reviewed Skill registry contract permits named Project keys to write `project`
   Skills and Default Project keys to write `org` Skills. Read `references/skill-registry.md`
   for upload, versioning, write permissions, SDK compatibility, and deployment verification.
