@@ -413,15 +413,14 @@
       "id": 9,
       "name": "channel-allowlist-boundary",
       "prompt": "I passed allow_from with two sender IDs to addChannel. Can I rely on that as the only access control? Also, does binding Feishu make those conversations inaccessible to our organization API key? We are using a Platform Project key; explain the available product boundary before proposing any Channel calls.",
-      "expected_output": "Project keys cannot bind/administer Channels; use API Sessions and backend authorization.",
+      "expected_output": "allow_from restricts direct-message senders only when dm_policy is allowlist; it does not replace backend authorization. Conversations from a channel are Sessions on the Agent and stay readable with the same Project key. Project keys can bind channels using the default account.",
       "files": [],
       "assertions": [
         {
-          "name": "identifies Project Channel restriction",
+          "name": "ties allow_from to the allowlist policy",
           "kind": "present",
           "patterns": [
-            "(Project|Platform).{0,150}(cannot|unavailable|not available|404)",
-            "404\\s+service_api\\.not_found"
+            "allowlist"
           ]
         },
         {
@@ -430,6 +429,13 @@
           "patterns": [
             "authoriz",
             "backend"
+          ]
+        },
+        {
+          "name": "does not claim Project keys cannot bind channels",
+          "kind": "absent",
+          "patterns": [
+            "(Project|Platform)[^.\\n]{0,80}(cannot|can't|unable to)[^.\\n]{0,40}(bind|use|administer)[^.\\n]{0,20}[Cc]hannel"
           ]
         }
       ]
@@ -597,23 +603,42 @@
       "id": 14,
       "name": "dingtalk-and-feishu-document-channels",
       "prompt": "Show TypeScript SDK examples for directly binding a DingTalk channel and for enabling Feishu document permission administration. How do I tell whether the Feishu capability is actually ready, and can DingTalk use startChannelSetup? We are using a Platform Project key; explain the available product boundary before proposing any Channel calls.",
-      "expected_output": "Project keys cannot bind/administer Channels; use API Sessions and backend authorization.",
+      "expected_output": "DingTalk binds through addChannel with platform 'dingtalk-connector' and config { clientId, clientSecret }; it has no startChannelSetup flow. Feishu takes permission_admin_enabled and readiness is read from listChannels health/status and capabilities, not from the 201.",
       "files": [],
       "assertions": [
         {
-          "name": "identifies Project Channel restriction",
+          "name": "uses the DingTalk platform value and credential keys",
           "kind": "present",
           "patterns": [
-            "(Project|Platform).{0,150}(cannot|unavailable|not available|404)",
-            "404\\s+service_api\\.not_found"
+            "dingtalk-connector"
           ]
         },
         {
-          "name": "preserves application authorization",
+          "name": "names the DingTalk credential keys",
           "kind": "present",
           "patterns": [
-            "authoriz",
-            "backend"
+            "clientSecret"
+          ]
+        },
+        {
+          "name": "enables Feishu permission administration",
+          "kind": "present",
+          "patterns": [
+            "permission_admin_enabled"
+          ]
+        },
+        {
+          "name": "reads readiness from listChannels",
+          "kind": "present",
+          "patterns": [
+            "listChannels"
+          ]
+        },
+        {
+          "name": "does not claim Project keys cannot bind channels",
+          "kind": "absent",
+          "patterns": [
+            "(Project|Platform)[^.\\n]{0,80}(cannot|can't|unable to)[^.\\n]{0,40}(bind|use|administer)[^.\\n]{0,20}[Cc]hannel"
           ]
         }
       ]

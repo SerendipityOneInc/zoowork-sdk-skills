@@ -283,8 +283,9 @@ policy. Keep network access that must be restricted in your own backend or a cus
 | Capability | Public boundary |
 |---|---|
 | Session-local model/tools/MCP overrides | Configure the Agent or create a separate Agent. |
-| Root Environment administration; Channel binding | Unavailable to Project keys; methods do not grant permissions. |
-| Skill registry publishing | Source-reviewed Project-key support has scope and deployment requirements; see [Skill registry](./skill-registry.md). Do not infer that publishing is unavailable from Environment or Channel restrictions. |
+| Root Environment administration | Unavailable to Project keys; methods do not grant permissions. |
+| Several connections of one platform on one Agent | Each Agent has one connection per platform. Use another Agent for a second account. |
+| Skill registry publishing | Source-reviewed Project-key support has scope and deployment requirements; see [Skill registry](./skill-registry.md). Do not infer that publishing is unavailable from Environment restrictions. |
 | Schedule cleanup | Stop/delete does not clean schedules; remove schedules before deleting the Agent. |
 | Message attachments | A Session message carries text only. Upload the file into `/workspace` (see `developer-api.md`) and name its path in the message. |
 | Programmatic end-user credential store | Keep credentials in your backend and call controlled custom tools. |

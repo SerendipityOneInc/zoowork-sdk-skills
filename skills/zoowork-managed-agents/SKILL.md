@@ -207,7 +207,8 @@ skill, which teaches a developer's assistant how to call ZooWork.
 - The source-reviewed Skill registry contract permits named Project keys to write `project`
   Skills and Default Project keys to write `org` Skills. Read `references/skill-registry.md`
   for upload, versioning, write permissions, SDK compatibility, and deployment verification.
-- Project keys do not administer root Environments or Channels. These are separate capabilities.
+- Project keys do not administer root Environments. They bind Channels with one connection per
+  platform on each Agent (`account` omitted or `default`); read the SDK reference's Channels section.
 - Use `persona.docs` for standing instructions and Session messages for text task inputs.
   To give the Agent a local file, upload it into `/workspace` and name its path in the message.
   Ask the Agent to create and publish output, then download it through the Artifact API.

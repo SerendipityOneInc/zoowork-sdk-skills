@@ -252,8 +252,49 @@ continues to take `Record<string, unknown>`. `ModelInfo.thinking` is optionally
 
 ## Channels
 
-Project keys cannot bind or administer Channels: these routes return `404 service_api.not_found`.
-Do not build Channel onboarding with a Project key. Use API Sessions and your own application UI.
+A channel connects a chat account to an Agent; messages to that account start Sessions on the
+Agent, and those Sessions are readable with the same key. Each Agent has one connection per
+platform. Omit `account` (or pass `'default'`) on every call: with a Project key any other name
+answers `400 channel.account_invalid`, and responses report the connection as `'default'`.
+
+QR platforms are `feishu`, `wecom` and `weixin`. WeChat has no other path: `addChannel` with
+`'weixin'` answers `400 channel.weixin_setup_required`.
+
+```ts
+const setup = await zc.startChannelSetup(agentId, 'weixin', { dm_policy: 'open' })
+const qr = setup.verification_uri_complete ?? setup.qrcode_url // render this for the account owner
+const result = await zc.waitForChannelSetup(agentId, 'weixin', setup.session_id, {
+  timeoutMs: setup.expires_in * 1000, // default is 600s; WeCom and WeChat expire after 300s
+})
+if (result.status !== 'success') throw new Error(`setup ended: ${result.status}`)
+```
+
+- The binding is written by the poll that observes the confirmation, so keep polling while the
+  person scans. `waitForChannelSetup` returns `success` / `expired` / `denied` / `error`; a
+  cancelled session answers `404 channel.{platform}_session_not_found`.
+- Feishu and WeCom setup on an Agent that already has that platform answers `409 channel.conflict`
+  before a QR is issued: `removeChannel` first. Scanning WeChat again for the same Agent replaces
+  its connection; one WeChat account holds one connection, so scanning it for a second Agent
+  disconnects the first.
+- `addChannel` takes app credentials in camelCase `config`: Slack `{ botToken, appToken }`,
+  WeCom `{ botId, secret }`, Feishu `{ appId, appSecret, domain }`. DingTalk uses
+  `platform: 'dingtalk-connector'` with `{ clientId, clientSecret }`; that route is in the SDK
+  source but no live request has exercised it, so verify it on your deployment first.
+- `dm_policy: 'allowlist'` with `allow_from` sender IDs limits who can message the Agent
+  directly; other policies ignore `allow_from`, and DingTalk needs explicit IDs (no `'*'`). It is
+  a chat-side filter, not authorization for your API: channel conversations stay readable as
+  Sessions with the key.
+- Feishu document permission administration: pass `permission_admin_enabled: true` to
+  `addChannel` or `startChannelSetup` (other platforms answer
+  `400 channel.permission_admin_not_supported`). Readiness is `capabilities.feishu_documents` on
+  `listChannels`: `sync.state` reaches `'applied'` and `provider.state` is `'ready'` with empty
+  `missing_scopes`; `approval_state: 'pending_admin'` means a workspace admin must approve. These
+  capability fields are source-reviewed in the SDK types, not live-verified.
+- `201` means stored, not working: credentials are checked when the connection starts. Read
+  `health` / `status` from `listChannels`. Same `platform` with different `config` answers
+  `409 channel.conflict`; rotate credentials by removing and adding.
+- `removeChannel` succeeds when nothing is bound; deleting the Agent removes its connections.
+  Channel health is never in the Agent's `status`.
 
 ## Sessions
 

@@ -237,7 +237,11 @@ not authentication. `permission` sets `always_ask` or `always_allow` for the ser
 overrides exact native tool names, with no wildcard and a maximum of 64 entries. Tool-policy
 selectors separately support an exact name, global `*`, or one trailing `prefix*`.
 
-Project keys cannot bind Channels or administer root Environments. Skill registry publishing
+Project keys cannot administer root Environments. They can bind Channels with
+`start_channel_setup` / `wait_for_channel_setup` (`feishu`, `wecom`, `weixin`) or `add_channel`
+(app credentials); each Agent has one connection per platform, so omit `account` or pass
+`"default"`. Pass `timeout=setup["expires_in"]` to `wait_for_channel_setup`, whose default is 600
+seconds. The rules match the TypeScript reference's Channels section. Skill registry publishing
 is a separate, source-reviewed contract: named Project keys upload with `scope="project"`;
 Default Project keys use `scope="org"`. `upload_skill` accepts a string scope. Read
 [Skill registry](./skill-registry.md) for packaging, deployment verification, write permissions
