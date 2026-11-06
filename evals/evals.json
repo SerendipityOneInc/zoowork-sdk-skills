@@ -1409,6 +1409,70 @@
           ]
         }
       ]
+    },
+    {
+      "id": 26,
+      "name": "unattended-tool-approvals-and-usage",
+      "prompt": "We run an unattended ZooWork generation workflow. Our coding assistant copied exec: always_ask from a deployment example and also put process and artifact_publish on always_ask. A callback automatically allows every request, but one unanswered approval stopped a long job. Separately, our application denied an exec call with timeout: 1200 because it interpreted the documented ten-minute approval deadline as a 600-second command limit. That run ended with run_status: succeeded, no output Artifact, and nonzero model usage. Should we just switch every tool to always_allow? Some commands call paid external services on behalf of end users and must still pass our authorization rules. Explain the policy choices, how to keep the job progressing, the two time limits, the billing, and what proves success. Do not run live requests or change any configuration. Answer in English.",
+      "expected_output": "Select approval policies by authorization needs; retain review for paid external operations, keep handlers alive for repeated calls, distinguish Session grants and approval deadlines from exec duration, explain already-incurred usage and verify actual output.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "keeps application authorization rather than blanket permission removal",
+          "kind": "present",
+          "patterns": [
+            "always_ask[\\s\\S]{0,700}(?:authoriz|review)",
+            "(?:authoriz|review)[\\s\\S]{0,700}always_ask"
+          ]
+        },
+        {
+          "name": "covers repeated polling and output publication",
+          "kind": "present",
+          "patterns": [
+            "process[\\s\\S]{0,700}artifact_publish",
+            "artifact_publish[\\s\\S]{0,700}process"
+          ]
+        },
+        {
+          "name": "offers a scoped Session grant",
+          "kind": "present",
+          "patterns": [
+            "allow-always[\\s\\S]{0,500}[Ss]ession",
+            "[Ss]ession[\\s\\S]{0,500}allow-always"
+          ]
+        },
+        {
+          "name": "separates approval response deadline from execution duration",
+          "kind": "present",
+          "patterns": [
+            "(?:deadline|ten.minute|600.second)[\\s\\S]{0,600}(?:execution|command|exec)[\\s\\S]{0,300}(?:separate|different|not|distinct)",
+            "(?:separate|different|not|distinct)[\\s\\S]{0,300}(?:deadline|execution time|command.duration)"
+          ]
+        },
+        {
+          "name": "explains model usage already incurred despite denial",
+          "kind": "present",
+          "patterns": [
+            "(?:[Mm]odel|LLM|token)[\\s\\S]{0,650}(?:denied|denial|refund)",
+            "(?:denied|denial|refund)[\\s\\S]{0,650}(?:[Mm]odel|LLM|token)"
+          ]
+        },
+        {
+          "name": "checks actual output separately from run success",
+          "kind": "present",
+          "patterns": [
+            "succeeded[\\s\\S]{0,500}(?:Artifact|artifact|output)",
+            "(?:Artifact|artifact|output)[\\s\\S]{0,500}succeeded"
+          ]
+        },
+        {
+          "name": "communicates the application duration limit in Agent instructions",
+          "kind": "present",
+          "patterns": [
+            "(?:task|persona|standing|system) instructions"
+          ]
+        }
+      ]
     }
   ]
 }

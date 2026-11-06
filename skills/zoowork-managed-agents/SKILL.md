@@ -64,7 +64,7 @@ Docs paths are relative to `https://zoowork.ai/docs/`.
 | First integration, API key, or funding | `get-started/quickstart.md`, `get-started/authentication.md` | - |
 | Set or clear Agent thinking, reasoning effort, model thinking capabilities, or Schedule thinking overrides | `build/agents.md`, `reference/models.md`, `build/schedules.md` | `references/thinking-levels.md`, then the language reference |
 | TypeScript method, option, return shape, Agent config, model, MCP, Environment, channel, schedule, artifact, `exec`, or `wake` | `reference/typescript-sdk.md`, plus the matching `build/` page | `references/typescript-sdk.md` |
-| Approvals, `always_ask` / `always_allow`, or MCP permission defaults | `build/permissions.md`, `build/tools.md` | the language reference |
+| Approvals, `always_ask` / `always_allow`, unattended jobs, or MCP permission defaults | `build/permissions.md`, `build/tools.md` | `references/tool-permissions.md`, then the language reference |
 | Securing a deployment, prompt injection, data boundaries, or monitoring Sessions for misuse | `security/secure-deployment.md`, `security/risks-and-boundaries.md`, `security/monitor-sessions.md` | - |
 | Python import, snake_case method, return shape, event helper, custom tool, Session cursor, Agent config, MCP, or channel | `reference/python-sdk.md`, plus the Python tabs of the matching `build/` page | `references/python-sdk.md` |
 | Sending a local file (PDF, image, CSV, any bytes) to an Agent, text task inputs, file outputs, Database availability, Usage, Organization balance, webhook registration/verification/delivery diagnostics, Run Output, or action paging/detail | `build/files.md`, `build/data-storage.md`, `reference/usage.md`, `build/webhooks.md`, `build/session-operations.md` | `references/developer-api.md` |
@@ -263,10 +263,12 @@ Do not run live, billable, or tenant-mutating calls merely to answer a design qu
   unknown action, a rule without `id`, non-array `rules`, more than 64 rules, or more than 32 KiB.
   The message names the field. A stored policy that fails keeps later writes failing until an
   update sends a corrected full `tool_policy`.
+- Choose tool approvals for the workflow; do not copy `exec: 'always_ask'` as a universal
+  deployment default. Read `references/tool-permissions.md` for unattended jobs, repeated calls,
+  command-duration limits, and usage after denial. Keep review for actions that need it.
 - To review persona changes, set `tool_policy.permissions.persona_doc_update` to `always_ask`.
-  Deny `cron` unless the Agent must manage its own schedules. A pending approval is denied after
-  ten minutes, and an `allow-always` decision on a server-wide MCP default can cover the server's
-  other tools for the rest of the Session.
+  Deny `cron` unless the Agent must manage its own schedules. An `allow-always` decision on a
+  server-wide MCP default can cover its other tools for the rest of the Session.
 - Treat web pages, files and MCP or custom tool results as untrusted input that can carry prompt
   injection; limit tools and require approvals instead of relying on the model to ignore it.
   Artifact download URLs work for anyone who holds them; keep them out of logs.

@@ -126,7 +126,11 @@ returned a flat receipt with a top-level `config_version` and no `declared` at a
 syntax: exact names, global `*`, or one trailing `prefix*` work in allow/deny/rule match/afterRules
 and deferred MCP pinned entries. Other `*` placements match nothing, and `alsoAllow` remains
 exact-only. Production checks verified exact-name `allow` and `deny` lists removing tools from a
-turn, and `permissions: { exec: 'always_ask' }` gating a call; the wildcard forms are
+turn, and `permissions: { exec: 'always_ask' }` gating a call. That is evidence of approval
+behavior, not a recommendation to add it to every Agent. Before choosing permissions, read
+[Tool permissions](./tool-permissions.md): keep application review where required, and use
+`always_allow` only for tools authorized to run autonomously. An unattended run with
+`always_ask` needs a decision handler for its whole lifetime. The wildcard forms are
 source-reviewed. A policy the runtime cannot parse - an `argsPattern` or `resultPattern` that is
 not RE2 syntax (lookaround, backreferences and inline flags are rejected; at most 512 characters),
 an unknown rule action, a rule without `id`, non-array `rules`, more than 64 rules or more than
