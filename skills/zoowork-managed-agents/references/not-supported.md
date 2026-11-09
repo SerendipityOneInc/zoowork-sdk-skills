@@ -87,13 +87,13 @@ Omission is default-allow. An allow-always decision on the server wildcard cover
 that server for the Session. In production checks a server-level `always_ask` produced an
 approval request that `allow-once` resolved; per-tool overrides are source-reviewed.
 
-The real limit is authenticated identity. `McpServerDeclaration.credential` names a slug for a single static
-bearer token, and the endpoint that would store the secret behind that slug answers 404 through the
-gateway by design - so **authenticated MCP is not usable**. The declared credential is one shared
-value for the whole agent in any case. Runtime context can identify an `actorUid` when available,
-but it is not a credential or a signed assertion. If your product needs to act as the signed-in
-user, this option cannot get you there without your own authentication layer in front of the MCP
-server.
+For an MCP server that needs each end user's own credential, use Vault (beta): declare the server
+with `auth: { type: 'vault' }` and attach that user's Vault when you create their Session; see
+`build/vault.md`. Do not use `McpServerDeclaration.credential` for this. It names a slug for one
+static bearer token shared by the whole Agent, and the endpoint that would store the secret behind
+that slug answers 404 through the gateway. A server that declares both `auth` and `credential` is
+disabled. Runtime context can identify an `actorUid` when available, but it is not a credential or
+a signed assertion.
 
 **Use a second turn when you do not want to park a run.** Let the turn finish, do
 the work yourself, and post the answer as the next message. It costs one extra turn and it is
@@ -136,21 +136,21 @@ own, so pair it with a `user.message` when you need an answer now.
 
 ---
 
-## End-user credential storage
+## End-user credentials outside Vault
 
-**What you would build.** A vault per end user holding their third-party tokens, so the agent acts
-as that user against their calendar, their repo, their CRM.
+**What you would build.** Per-user tokens the Agent uses as that user against their calendar,
+their repo, their CRM.
 
-**What actually happens.** There is no vault resource of any kind and no credential methods on the
-client: the gateway owns the credential layer and seeds model credentials itself at create.
-`McpServerDeclaration.credential` accepts a slug and stores it on the agent, but the slug points at
-a store you cannot write to.
+**What exists.** Vault (beta) stores an end user's credentials for the Agent's remote MCP servers
+and sends them only when that user's Session calls the server. Your application creates one Vault
+per user and keeps the mapping; see `build/vault.md`.
 
-**Why.** Your Project key authenticates backend access within its Project. There is no end-user principal
-anywhere in this API for a secret to be scoped to, so there is nothing for a vault to key on.
+**What is not supported.** Vault credentials for commands in the sandbox, credentials configured on
+an Environment, passing Vault credentials to spawned Sessions or Schedules, and Vault in chat-channel
+conversations. A Vault Session is not isolated from the Agent owner's credentials.
 
-**What to do instead.** Keep end-user secrets in your own backend and never let them cross into the
-platform. Make the calls that need them from your own process and pass results in as messages, as
+**What to do instead.** For anything Vault does not cover, keep end-user secrets in your own backend
+and never let them cross into the platform. Make the calls that need them from your own process and pass results in as messages, as
 in the second-turn pattern above. Do not smuggle a secret into an agent's persona docs, a skill file, or session
 `metadata`: persona and skills are agent-wide and shared by every session, and any authorized key holder can read them back.
 
@@ -288,7 +288,7 @@ policy. Keep network access that must be restricted in your own backend or a cus
 | Skill registry publishing | Source-reviewed Project-key support has scope and deployment requirements; see [Skill registry](./skill-registry.md). Do not infer that publishing is unavailable from Environment restrictions. |
 | Schedule cleanup | Stop/delete does not clean schedules; remove schedules before deleting the Agent. |
 | Message attachments | A Session message carries text only. Upload the file into `/workspace` (see `developer-api.md`) and name its path in the message. |
-| Programmatic end-user credential store | Keep credentials in your backend and call controlled custom tools. |
+| End-user credentials for sandbox commands, Environments, Schedules or channels | Not covered by Vault. Keep them in your backend and call controlled custom tools. For remote MCP servers, use Vault (beta). |
 | Key management | Create and manage Project keys in https://platform.zoowork.ai. Secrets are shown once. |
 
 ## When you are unsure

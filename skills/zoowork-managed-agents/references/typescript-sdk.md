@@ -617,11 +617,14 @@ Persistent workspace storage has no documented fixed quota or retention SLA.
 
 ## Credentials
 
-There is no credential API on the client: the gateway seeds model credentials itself at create, so
-there is nothing for an API-key caller to store. One consequence: `McpServerDeclaration.credential`
-names a credential slug that is accepted and stored on the agent, but there is no endpoint to put
-the secret it points at, so an authenticated MCP server cannot be made to work - declare public
-servers only. See `references/not-supported.md` - End-user credential storage.
+The gateway seeds model credentials itself at create. For an MCP server that needs each end
+user's own credential, use Vault (beta, 0.15.0+): declare the server with `auth: { type: 'vault' }`
+and attach the user's Vault when you create their Session; the Vault methods and
+`VaultBetaUnavailableError` are documented in `build/vault.md` and the TypeScript reference.
+`McpServerDeclaration.credential` is a different mechanism: the slug is stored on the Agent, but a
+Project key has no endpoint to store the secret behind it, so do not use it. A server that declares
+both `auth` and `credential` is disabled. See `references/not-supported.md` - End-user credentials
+outside Vault.
 
 ## Errors
 
