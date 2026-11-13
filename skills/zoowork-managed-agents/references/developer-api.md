@@ -32,7 +32,10 @@ parameters. Responses retain API spelling and unknown fields. Reporting does not
 Session dollar cap. Production invalid Usage parameters can return 422 with a `detail` array
 and no business error type (for example an invalid range or page size), or 400
 `usage.invalid_query` for invalid timezone. Correct the query; do not retry unchanged.
-`credits` uses Platform credits, at 200 credits/USD. Key-scoped consumption is not the
+Usage reports spend as `amount`, a USD decimal string on `totals`, each group and each record,
+with top-level `currency: 'usd'`. It is not rounded to cents (`"1.00"`, `"12.434"`, `"0.01123"`),
+so add amounts as decimals, not floats. `credits` in the same response is a legacy unit; read
+`amount`. Key-scoped consumption is not the
 Organization balance or a complete Organization cost report. Read the balance with `getBalance()` /
 `get_balance()`: any Platform key in the Organization, including a Project key, gets
 `{ object: 'balance', available_amount, currency: 'usd' }`. `available_amount` is a two-place USD
