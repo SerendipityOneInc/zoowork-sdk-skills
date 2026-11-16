@@ -34,8 +34,10 @@ and no business error type (for example an invalid range or page size), or 400
 `usage.invalid_query` for invalid timezone. Correct the query; do not retry unchanged.
 Usage reports spend as `amount`, a USD decimal string on `totals`, each group and each record,
 with top-level `currency: 'usd'`. It is not rounded to cents (`"1.00"`, `"12.434"`, `"0.01123"`),
-so add amounts as decimals, not floats. `credits` in the same response is a legacy unit; read
-`amount`. Key-scoped consumption is not the
+so add amounts as decimals, not floats. For billing, cost display or reconciliation, always read
+`amount` with `currency`. `credits` in the same response is deprecated (`@deprecated` on
+`UsageSpend.credits`): it is an internal accounting unit, not a currency amount, so never bill,
+display or convert it. Key-scoped consumption is not the
 Organization balance or a complete Organization cost report. Read the balance with `getBalance()` /
 `get_balance()`: any Platform key in the Organization, including a Project key, gets
 `{ object: 'balance', available_amount, currency: 'usd' }`. `available_amount` is a two-place USD
