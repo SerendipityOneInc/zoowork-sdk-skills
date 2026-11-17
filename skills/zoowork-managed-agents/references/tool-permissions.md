@@ -37,6 +37,10 @@ commands. An in-loop `exec` call's `timeout` controls execution after approval. 
 SDK `exec(agentId, argv)` method is a separate operation; do not substitute its arguments
 or timeout contract for the Agent tool's.
 
+A run that ends after a denied or timed-out approval keeps `status: 'succeeded'` and reports
+`terminal_outcome: 'approval_rejected'` in run output and the `run.finished` webhook. Check it
+before treating the run's result as complete.
+
 If the application enforces a command-duration limit, include that limit in task or persona
 instructions so the Agent can select suitable arguments. Continue enforcing it in the
 application; model instructions are not an authorization boundary. Do not infer that a

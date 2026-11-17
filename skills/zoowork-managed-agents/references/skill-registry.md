@@ -39,7 +39,9 @@ keys also cannot edit Organization-shared Skills. Inaccessible or non-writable S
 
 Use one Skill per ZIP. `SKILL.md` must be nonempty and declare `name` and `description` in YAML
 frontmatter. Either put it at the archive root or put the Skill in one top-level directory whose
-name matches the frontmatter name. Keep the Skill name unchanged when publishing a new version.
+name matches the frontmatter name. Entry paths must use `/`: a path containing a backslash returns
+`400 invalid_zip`, which catches archives some Windows tools build. Keep the Skill name unchanged
+when publishing a new version.
 Put the description in `SKILL.md`; the separate create-time description option is not forwarded.
 
 For example, `slide-layout/SKILL.md` starts with:
