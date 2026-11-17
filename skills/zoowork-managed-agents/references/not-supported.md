@@ -231,7 +231,10 @@ does not replace your session ownership index or grant access.
 ## A memory store resource
 
 There is no public memory-store create/mount/CRUD API. Agent-managed memory tools operate during
-turns; an authenticated backend can attribute `user.message` with `actor.ref`. Attribution is
+turns; an authenticated backend can attribute `user.message` with `actor.ref`. Between turns the
+runtime also consolidates the Agent's memory while the Agent resource's
+`memory.dreaming.enabled` is `true` (the default), which changes memory IDs and versions; send
+`updateAgent(agentId, { memory: { dreaming: { enabled: false } } })` to stop it. Attribution is
 not authorization or file isolation. For externally managed facts, use your own database and
 pass relevant facts as inputs or expose a controlled custom tool.
 
