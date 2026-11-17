@@ -491,7 +491,8 @@ the update looks like it worked. **To change the cadence send `schedule`, the in
 `ScheduleSpec` has three kinds (`cron`, `every`, `at`). Interval input is
 `{ kind: 'every', everyMs: 60_000 }`, with optional `anchorMs` (epoch milliseconds); an enabled
 60-second interval fired automatically in production checks. The old `every` field is not the
-wire contract: migrate explicitly rather than guessing units. Cron is five fields; macros and a `CRON_TZ=` prefix are rejected, and overlap
+wire contract: migrate explicitly rather than guessing units. Cron is five fields with the timezone in `tz`. Do not use macros such as `@daily` or a `CRON_TZ=`
+prefix: the API does not reject them, but they are not the supported form. Overlap
 is fixed to skip server-side, so a fire landing on a still-running one is dropped, not queued.
 
 `createSchedule` is 409 when you re-create an existing `schedule_id` with a **different**
