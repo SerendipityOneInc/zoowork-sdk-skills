@@ -1478,7 +1478,7 @@
       "id": 27,
       "name": "mcp-server-with-one-shared-api-key",
       "prompt": "We're adding a support assistant to our product with @zoowork-ai/sdk (TypeScript) and a Platform Project key. It needs our ticket search, which is an MCP server we host at https://mcp.acme-support.example/mcp. That server only accepts requests with `Authorization: Bearer <key>`, using one API key that belongs to our company. Our customers don't have accounts on it; every customer conversation should use the same key. Write the TypeScript that connects the Agent to this server and creates a Session for each customer conversation. Keep the key out of anything the model or other users can read.",
-      "expected_output": "Declares the server in resource.mcp with auth: { type: 'vault' }, stores the company key once as a Vault static_bearer (or static_headers) credential for that server URL, and creates every customer's Session with vault_ids naming that one Vault, an isolation mode and an idempotency key. Does not use McpServerDeclaration.credential, does not put the key in the MCP declaration's headers, and does not proxy the server through an application-executed custom tool. Notes that Vault is beta.",
+      "expected_output": "Declares the server in resource.mcp with auth: { type: 'vault' }, stores the company key once as a Vault static_bearer (or static_headers) credential for that server URL, and creates every customer's Session with vault_ids naming that one Vault, an isolation mode and an idempotency key. Does not use McpServerDeclaration.credential, does not put the key in the MCP declaration's headers, and does not proxy the server through an application-executed custom tool. If it mentions rotation, a rotated secret reaches existing Sessions on their next call. Notes that Vault is beta.",
       "files": [],
       "assertions": [
         {
@@ -1537,6 +1537,15 @@
           "kind": "absent",
           "patterns": [
             "custom_tools\\s*:\\s*\\["
+          ]
+        },
+        {
+          "name": "does not claim that a rotated key skips existing Sessions",
+          "kind": "absent",
+          "patterns": [
+            "[Ee]xisting [Ss]essions? keep (?:the|their) (?:credential|key|secret|token) they started with",
+            "[Ee]xisting [Ss]essions?[^.]{0,40}(?:keep|still use|continue to use|continue using)[^.]{0,40}(?:old|previous) (?:key|secret|token)",
+            "(?:[Oo]nly|so) new (?:conversations|[Ss]essions) (?:pick up|get|use) the (?:new|rotated) (?:key|secret|token|credential)"
           ]
         },
         {

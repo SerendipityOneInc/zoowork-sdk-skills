@@ -276,14 +276,15 @@ Do not run live, billable, or tenant-mutating calls merely to answer a design qu
   Python 0.10.0+), whether it is each end user's own or one key shared by every Session. Declare
   the server with `auth: { type: 'vault' }`, then create each Session with `vault_ids` (that
   user's Vault, or the one shared Vault) and `isolation` (`'session'` when the Agent serves
-  several users); see `build/vault.md`. ZooWork does not run the OAuth authorization flow for
-  MCP: your app obtains the token and stores it as an `mcp_oauth` credential. Vault credentials
-  never reach the sandbox, so secrets for sandbox commands or other services stay in your backend
-  behind custom tools. Session isolation does not cover the Agent owner's credentials: sandbox
-  code and owner-acting tools keep the owner's identity, GitHub and browser sign-in, so narrow
-  `tool_policy` on an Agent that serves several users. `VaultBetaUnavailableError`
-  (`404 service_api.not_found`, `400 vault.session_fields_unavailable`) means Vault is not
-  available to that key.
+  several users); see `build/vault.md`. Rotating a credential's secret reaches existing Sessions
+  on their next call; only a credential added to the Vault later needs a new Session. ZooWork
+  does not run the OAuth authorization flow for MCP: your app obtains the token and stores it as
+  an `mcp_oauth` credential. Vault credentials never reach the sandbox, so secrets for sandbox
+  commands or other services stay in your backend behind custom tools. Session isolation does
+  not cover the Agent owner's credentials: sandbox code and owner-acting tools keep the owner's
+  identity, GitHub and browser sign-in, so narrow `tool_policy` on an Agent that serves several
+  users. `VaultBetaUnavailableError` (`404 service_api.not_found`,
+  `400 vault.session_fields_unavailable`) means Vault is not available to that key.
 - Match `ZooworkError.status` and `.type`, not message text. Usage validation can return 422
   with no business type; invalid timezone can return 400 `usage.invalid_query`.
 - `409 database_conflict` means the request lost a lock conflict and earlier steps may have been

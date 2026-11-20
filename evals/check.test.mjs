@@ -210,3 +210,20 @@ test('shared MCP key tripwire accepts one Vault and rejects the slug, header and
     "custom_tools: [{ name: 'search_tickets', input_schema: { type: 'object' } }]",
   ]) assert.equal(check(27, vaultRoute + '\n' + bad).status, 1)
 })
+
+// A rotated secret reaches existing Sessions; a credential added later does not. Phrasings below:
+// the first is the error an eval-27 run made on 2026-11-20, the rest are correct statements.
+test('shared MCP key tripwire rejects the claim that rotation skips existing Sessions', () => {
+  const vaultRoute = `
+    mcp: [{ name: 'tickets', url, auth: { type: 'vault' } }]
+    await zc.createVaultCredential(vault.id, { auth: { type: 'static_bearer', mcp_server_url: url, access_token: key } }, opts)
+    await zc.createSession(agentId, { isolation: 'session', vault_ids: [vault.id] }, conversationKey) // Vault is beta
+  `
+  const rotation = source => check(27, vaultRoute + '\n' + source).result.checks
+    .find(item => item.text === 'does not claim that a rotated key skips existing Sessions').passed
+  assert.equal(rotation('Existing Sessions keep the credential they started with, so new conversations pick up the new key.'), false)
+  assert.equal(rotation('After a rotation, existing Sessions still use the old key.'), false)
+  assert.equal(rotation('One update to the Vault credential covers every existing Session.'), true)
+  assert.equal(rotation('Existing Sessions keep their original credential selection, but a rotated secret reaches them on the next call.'), true)
+  assert.equal(rotation('Existing and new Sessions use the new key on their next call.'), true)
+})
