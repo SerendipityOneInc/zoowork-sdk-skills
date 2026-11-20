@@ -20,6 +20,7 @@ Map local inputs onto supported Platform resources before writing calls.
 | Custom tool / function definitions | `resource.custom_tools`; your application handles `agent.custom_tool_use` and resolves the call | Verified in production with REST resolution and `user.custom_tool_result`. Keep a pending-call recovery loop |
 | Local text task data | A `user.message` in a Session | Read text in your application and include it in the message. Ask the Agent to create any needed files in `/workspace`; this is not a directory upload or mount |
 | Your chat UI | Stays yours | It talks to your backend, never to ZooWork. Step 9 |
+| MCP servers the local agent calls, and an API key they need | `resource.mcp`. A server that needs a key declares `auth: { type: 'vault' }`; store a key shared by all users in one Vault (beta) and attach it to every Session | Remote HTTP only (`streamable-http` or `sse`) and publicly reachable; no stdio. `build/mcp.md`, `build/vault.md` |
 | Per-end-user secrets or accounts | Remote MCP credentials: one Vault (beta) per user, attached when you create that user's Session. Anything else: your backend | `build/vault.md`; `references/not-supported.md` - End-user credentials outside Vault |
 
 Choose `sandbox.scope` at create time. Agent scope is required by `exec`. Session scope creates
