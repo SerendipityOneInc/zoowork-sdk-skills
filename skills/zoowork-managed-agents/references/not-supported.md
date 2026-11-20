@@ -40,7 +40,9 @@ remain pending until the run consumes it; do not interpret it as completed execu
 
 **Use MCP instead when the platform should call a remote server directly.** This is real and
 has been exercised end to end for public, unauthenticated servers: the tools appear in the model's
-manifest as `mcp__<server>__<tool>` and really execute.
+manifest as `mcp__<server>__<tool>` and really execute. A server that needs a credential, each end
+user's own or one key for the whole deployment, gets it from Vault (beta); see the credential
+paragraph below.
 
 ```ts
 await zc.createAgent({
@@ -62,9 +64,13 @@ await zc.createAgent({
 ```
 
 `mcp` is an agent-level declared section, so `updateAgent(agentId, { mcp: [...] })` changes it
-later. Remote HTTP only - `streamable-http` (the default) or `sse`; there is no stdio transport and
-no OAuth. The URL must be publicly reachable: loopback, private ranges, cloud metadata addresses
-and redirects are all refused. A server that fails its catalog probe does not fail the run; it can emit `agent.error` with `kind: 'mcp_connection_failed'` or
+later. Remote HTTP only - `streamable-http` (the default) or `sse`; there is no stdio transport.
+The platform does not run an OAuth authorization flow for a server: it does not discover the
+authorization server, register a client, or show a consent screen. Your application obtains the
+token and stores it in a Vault as an `mcp_oauth` credential, refreshed by your application
+(`refresh_owner: 'external'`) or by ZooWork (`refresh_owner: 'engine'` with a `refresh` object);
+see `build/vault.md`. The URL must be publicly reachable: loopback, private ranges, cloud metadata
+addresses and redirects are all refused. A server that fails its catalog probe does not fail the run; it can emit `agent.error` with `kind: 'mcp_connection_failed'` or
 `'mcp_authentication_failed'` and optional `reason` (`mcp_connection_failed` observed in production; retain unknown values).
 Transient failed catalogs can expire so a later resolution probes again. Healthy catalogs remain
 configuration-bound; this is not periodic auto-recovery or a guarantee that business calls retry.
@@ -87,13 +93,26 @@ Omission is default-allow. An allow-always decision on the server wildcard cover
 that server for the Session. In production checks a server-level `always_ask` produced an
 approval request that `allow-once` resolved; per-tool overrides are source-reviewed.
 
-For an MCP server that needs each end user's own credential, use Vault (beta): declare the server
-with `auth: { type: 'vault' }` and attach that user's Vault when you create their Session; see
-`build/vault.md`. Do not use `McpServerDeclaration.credential` for this. It names a slug for one
-static bearer token shared by the whole Agent, and the endpoint that would store the secret behind
-that slug answers 404 through the gateway. A server that declares both `auth` and `credential` is
-disabled. Runtime context can identify an `actorUid` when available, but it is not a credential or
-a signed assertion.
+**An MCP server that needs a credential gets it from Vault (beta).** Declare the server with
+`auth: { type: 'vault' }`, store the credential in a Vault, and attach the Vault when you create
+each Session, with `isolation` and an idempotency key; see `build/vault.md`. Two shapes work:
+
+- Each end user's own credential: one Vault per user, attached to that user's Sessions.
+- One credential for the whole deployment, such as a single API key your application owns: one
+  Vault that holds it, attached to every Session. `static_bearer` sends
+  `Authorization: Bearer <key>`; `static_headers` sends the headers you give, such as `X-API-Key`.
+  Rotating, archiving or deleting that credential applies to every Session that uses it. The
+  server receives the same key from every Session and cannot tell your users apart, so expose
+  only tools that every user of the Agent may use.
+
+Only Sessions created with `vault_ids` load a Vault server: chat-channel conversations, Schedules
+and Sessions spawned with `sessions_spawn` do not get it, and a Session with Vault credentials
+refuses per-Session setting changes such as its model (`403 vault.profile_restricted`). Do not use
+`McpServerDeclaration.credential` for a shared key either. It names a slug for one static bearer
+token shared by the whole Agent, but the endpoint that would store the secret behind that slug
+answers 404 through the gateway. A server that declares both `auth` and `credential` is disabled.
+Runtime context can identify an `actorUid` when available, but it is not a credential or a signed
+assertion.
 
 **Use a second turn when you do not want to park a run.** Let the turn finish, do
 the work yourself, and post the answer as the next message. It costs one extra turn and it is
@@ -143,7 +162,8 @@ their repo, their CRM.
 
 **What exists.** Vault (beta) stores an end user's credentials for the Agent's remote MCP servers
 and sends them only when that user's Session calls the server. Your application creates one Vault
-per user and keeps the mapping; see `build/vault.md`.
+per user and keeps the mapping; see `build/vault.md`. A credential that every Session shares goes
+in one Vault attached to every Session instead; see the MCP credential paragraph above.
 
 **What is not supported.** Vault credentials for commands in the sandbox, credentials configured on
 an Environment, passing Vault credentials to spawned Sessions or Schedules, and Vault in chat-channel
@@ -273,8 +293,9 @@ tools let a waiting run request work from your application, but do not turn your
 registered sandbox worker.
 
 **What to do instead.** If the goal is reaching a private system, use an application-executed
-custom tool, run a public MCP endpoint at the edge of your network - which must be safe to expose
-unauthenticated - or keep that work in your own process between turns. If the goal is
+custom tool, run a public MCP endpoint at the edge of your network - one that is safe to expose
+unauthenticated, or one that checks a key the platform sends from a Vault (beta) - or keep that
+work in your own process between turns. If the goal is
 controlling egress, note that the managed default Environment allows `unrestricted` outbound
 access, and Project keys cannot create or select an Environment with a narrower `networking`
 policy. Keep network access that must be restricted in your own backend or a custom tool.
@@ -291,7 +312,7 @@ policy. Keep network access that must be restricted in your own backend or a cus
 | Skill registry publishing | Source-reviewed Project-key support has scope and deployment requirements; see [Skill registry](./skill-registry.md). Do not infer that publishing is unavailable from Environment restrictions. |
 | Schedule cleanup | Stop/delete does not clean schedules; remove schedules before deleting the Agent. |
 | Message attachments | A Session message carries text only. Upload the file into `/workspace` (see `developer-api.md`) and name its path in the message. |
-| End-user credentials for sandbox commands, Environments, Schedules or channels | Not covered by Vault. Keep them in your backend and call controlled custom tools. For remote MCP servers, use Vault (beta). |
+| Credentials, per user or shared, for sandbox commands, Environments, Schedules or channels | Not covered by Vault. Keep them in your backend and call controlled custom tools. For remote MCP servers in Sessions your backend creates, use Vault (beta). |
 | Key management | Create and manage Project keys in https://platform.zoowork.ai. Secrets are shown once. |
 
 ## When you are unsure

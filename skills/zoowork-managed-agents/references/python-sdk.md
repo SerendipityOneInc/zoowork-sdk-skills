@@ -239,6 +239,11 @@ not authentication. `permission` sets `always_ask` or `always_allow` for the ser
 overrides exact native tool names, with no wildcard and a maximum of 64 entries. Tool-policy
 selectors separately support an exact name, global `*`, or one trailing `prefix*`.
 
+An MCP server that needs a credential declares `"auth": {"type": "vault"}` and gets it from a
+Vault (beta, 0.10.0+) attached in `create_session`: the user's own Vault, or one Vault that every
+Session shares for a key your application owns. See `build/vault.md`. Do not use a `credential`
+slug: a Project key has no endpoint to store the secret behind it.
+
 Project keys cannot administer root Environments. They can bind Channels with
 `start_channel_setup` / `wait_for_channel_setup` (`feishu`, `wecom`, `weixin`) or `add_channel`
 (app credentials); each Agent has one connection per platform, so omit `account` or pass

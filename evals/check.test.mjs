@@ -194,3 +194,19 @@ test('Agent CAS eval checks the update body and accepts correct Chinese recovery
   assert.equal(precondition('await client.update_agent(a, {"expected_config_version": v, "labels": {"tier": "paid"}})'), true)
   assert.equal(checks('\u51b2\u7a81\u540e\u91cd\u65b0\u8bfb\u53d6\u5e76\u91cd\u65b0\u8ba1\u7b97\u6539\u52a8\u3002').find(item => item.text === 'recomputes after a stale write').passed, true)
 })
+
+// A shared MCP key belongs in one Vault attached to every Session, not on the declaration.
+test('shared MCP key tripwire accepts one Vault and rejects the slug, header and proxy routes', () => {
+  const vaultRoute = `
+    await zc.updateAgent(agentId, { mcp: [{ name: 'tickets', url, auth: { type: 'vault' }, context: { headers: true } }] })
+    await zc.createVaultCredential(vault.id, { name: 'tickets', purpose: 'mcp', provider_account_ref: 'acme',
+      auth: { type: 'static_headers', mcp_server_url: url, headers: { 'X-API-Key': key } } }, { idempotencyKey: 'c1' })
+    await zc.createSession(agentId, { isolation: 'session', vault_ids: [vault.id] }, conversationKey) // Vault is beta
+  `
+  assert.equal(check(27, vaultRoute).status, 0)
+  for (const bad of [
+    "mcp: [{ name: 'tickets', url, credential: 'tickets' }]",
+    "mcp: [{ name: 'tickets', url, headers: { Authorization: 'Bearer ' + key } }]",
+    "custom_tools: [{ name: 'search_tickets', input_schema: { type: 'object' } }]",
+  ]) assert.equal(check(27, vaultRoute + '\n' + bad).status, 1)
+})

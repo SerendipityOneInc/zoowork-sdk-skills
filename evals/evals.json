@@ -1473,6 +1473,146 @@
           ]
         }
       ]
+    },
+    {
+      "id": 27,
+      "name": "mcp-server-with-one-shared-api-key",
+      "prompt": "We're adding a support assistant to our product with @zoowork-ai/sdk (TypeScript) and a Platform Project key. It needs our ticket search, which is an MCP server we host at https://mcp.acme-support.example/mcp. That server only accepts requests with `Authorization: Bearer <key>`, using one API key that belongs to our company. Our customers don't have accounts on it; every customer conversation should use the same key. Write the TypeScript that connects the Agent to this server and creates a Session for each customer conversation. Keep the key out of anything the model or other users can read.",
+      "expected_output": "Declares the server in resource.mcp with auth: { type: 'vault' }, stores the company key once as a Vault static_bearer (or static_headers) credential for that server URL, and creates every customer's Session with vault_ids naming that one Vault, an isolation mode and an idempotency key. Does not use McpServerDeclaration.credential, does not put the key in the MCP declaration's headers, and does not proxy the server through an application-executed custom tool. Notes that Vault is beta.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "declares the server for Vault credentials",
+          "kind": "present",
+          "patterns": [
+            "auth\\s*:\\s*\\{\\s*type\\s*:\\s*['\"]vault['\"]"
+          ]
+        },
+        {
+          "name": "stores the key as a Vault credential",
+          "kind": "present",
+          "patterns": [
+            "createVaultCredential\\s*\\("
+          ]
+        },
+        {
+          "name": "uses a static credential type for the key",
+          "kind": "present",
+          "patterns": [
+            "static_bearer",
+            "static_headers"
+          ]
+        },
+        {
+          "name": "attaches the Vault when creating the Session",
+          "kind": "present",
+          "patterns": [
+            "vault_ids\\s*:"
+          ]
+        },
+        {
+          "name": "sets an isolation mode on the Vault Session",
+          "kind": "present",
+          "patterns": [
+            "isolation\\s*:\\s*['\"](?:session|shared)['\"]"
+          ]
+        },
+        {
+          "name": "does not put the key on the credential slug",
+          "kind": "absent",
+          "patterns": [
+            "mcp\\s*:\\s*\\[\\s*\\{[^\\]]{0,400}\\bcredential\\s*:"
+          ]
+        },
+        {
+          "name": "does not put the key in the MCP declaration's headers",
+          "kind": "absent",
+          "patterns": [
+            "mcp\\s*:\\s*\\[\\s*\\{[^\\]]{0,400}\\bheaders\\s*:\\s*\\{",
+            "authorization_token"
+          ]
+        },
+        {
+          "name": "does not proxy the MCP server through a custom tool",
+          "kind": "absent",
+          "patterns": [
+            "custom_tools\\s*:\\s*\\["
+          ]
+        },
+        {
+          "name": "notes that Vault is a beta feature",
+          "kind": "present",
+          "patterns": [
+            "Vault[\\s\\S]{0,80}[Bb]eta",
+            "[Bb]eta[\\s\\S]{0,80}Vault"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "name": "per-user-oauth-mcp-server",
+      "prompt": "Our SaaS lets each user connect their account on a project tracker through OAuth; our backend already runs the consent flow and stores each user's access token, its expiry and the refresh token. The tracker's MCP server is at https://mcp.tracker.example/mcp and expects the user's OAuth access token as a Bearer token. We're building a ZooWork Agent (Python, `zoowork` SDK, Platform key) that should call that MCP server as the user who is chatting. Can ZooWork do this with an OAuth-protected MCP server? If yes, show the Python for storing a user's token and starting that user's Session, and say who refreshes the token. If not, tell me what to do instead.",
+      "expected_output": "Yes, through Vault (beta). Declares the server with \"auth\": {\"type\": \"vault\"}, creates a Vault for the user and stores an mcp_oauth credential with access_token, expires_at and a refresh_owner (external: the application refreshes and rotates; engine: ZooWork refreshes with a refresh object), then creates the user's Session with vault_ids, isolation \"session\" and an idempotency key. ZooWork does not run the OAuth consent flow itself.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "declares the server for Vault credentials",
+          "kind": "present",
+          "patterns": [
+            "[\"']auth[\"']\\s*:\\s*\\{\\s*[\"']type[\"']\\s*:\\s*[\"']vault[\"']"
+          ]
+        },
+        {
+          "name": "creates a Vault for the user",
+          "kind": "present",
+          "patterns": [
+            "create_vault\\s*\\("
+          ]
+        },
+        {
+          "name": "stores an OAuth credential",
+          "kind": "present",
+          "patterns": [
+            "[\"']mcp_oauth[\"']"
+          ]
+        },
+        {
+          "name": "sends the token expiry",
+          "kind": "present",
+          "patterns": [
+            "[\"']expires_at[\"']\\s*:"
+          ]
+        },
+        {
+          "name": "chooses who refreshes the token",
+          "kind": "present",
+          "patterns": [
+            "[\"']refresh_owner[\"']\\s*:\\s*[\"'](?:external|engine)[\"']"
+          ]
+        },
+        {
+          "name": "attaches the user's Vault to their Session",
+          "kind": "present",
+          "patterns": [
+            "[\"']vault_ids[\"']\\s*:"
+          ]
+        },
+        {
+          "name": "isolates a Session that serves one of several users",
+          "kind": "present",
+          "patterns": [
+            "[\"']isolation[\"']\\s*:\\s*[\"']session[\"']"
+          ]
+        },
+        {
+          "name": "passes an idempotency key with the Vault fields",
+          "kind": "present",
+          "patterns": [
+            "idempotency_key\\s*="
+          ]
+        }
+      ]
     }
   ]
 }
