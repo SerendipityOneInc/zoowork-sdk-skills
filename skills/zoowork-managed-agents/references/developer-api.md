@@ -243,17 +243,22 @@ for the result in the Session message, or say in `persona.docs` when to use the 
 
 ```ts
 import { writeFile } from 'node:fs/promises'
+import { basename } from 'node:path'
+import { DEFAULT_BASE_URL } from '@zoowork-ai/sdk'
 
+// Use the base URL the client uses: ZOOWORK_BASE_URL when set, otherwise the SDK default.
+const baseUrl = process.env.ZOOWORK_BASE_URL ?? DEFAULT_BASE_URL
 const events = await zc.listAllEvents(agentId, sessionId, { types: ['attachment.created'] })
 for (const event of events) {
   if (!event.id || event.payload.toolName === 'video_generate') continue
-  const route = `${process.env.ZOOWORK_BASE_URL}/agents/${agentId}/conversations/${sessionId}/attachments/${event.id}:0/download`
+  const route = `${baseUrl}/agents/${agentId}/conversations/${sessionId}/attachments/${event.id}:0/download`
   const res = await fetch(route, { headers: { Authorization: `Bearer ${process.env.ZOOWORK_API_KEY}` } })
   if (!res.ok) throw new Error(`Download URL failed: ${res.status}`)
   const { url } = (await res.json()) as { url: string }
   const file = await fetch(url)
   if (!file.ok) throw new Error(`Download failed: ${file.status}`)
-  await writeFile(String(event.payload.fileName), Buffer.from(await file.arrayBuffer()))
+  const name = typeof event.payload.fileName === 'string' ? basename(event.payload.fileName) : `${event.id}.bin`
+  await writeFile(name, Buffer.from(await file.arrayBuffer()))
 }
 ```
 
