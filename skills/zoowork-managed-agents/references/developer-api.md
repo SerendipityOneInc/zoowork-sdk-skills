@@ -216,6 +216,53 @@ ZooWork API key into the download request or log the access URL. Artifacts are s
 published copies; downloading one does not inspect the current workspace file. Follow the
 language reference for Artifact signatures and `not-supported.md` for attachment boundaries.
 
+## Generated images, video and speech
+
+Live-verified on a staging deployment on 2026-11-23 with `@zoowork-ai/sdk` 0.17.0. The public
+[Tools guide](https://zoowork.ai/docs/build/tools.md), section "Media generation tools", is the
+primary source.
+
+Image, video and speech generation are built-in Agent tools: `image_generate`,
+`video_generate`, `tts` and `tts_voices`. They are on the default tool surface, so do not build
+a custom tool, call a model API from the backend, or run a script in the sandbox for them. Ask
+for the result in the Session message, or say in `persona.docs` when to use the tools.
+
+- Do not hard-code generation model names. `image_generate` and `video_generate` with
+  `action: "list"` return the current models, modes and parameter ranges. Name a model in the
+  message when the user needs a specific one; the Agent passes it as `model`.
+- `image_generate` and `video_generate` run in the background and return at once. The Agent
+  normally waits for the result before its final reply.
+- Each generated file produces an `attachment.created` event. Read `toolName`, `fileName`,
+  `mimeType` and `size` from its payload; treat other payload fields as internal.
+- The SDKs do not wrap the download route. For an image or speech file, request
+  `GET /agents/{agent_id}/conversations/{session_id}/attachments/{event_id}:0/download` with the
+  API key, using the `attachment.created` event's `id`; it returns `{ url }`. Download that URL
+  without the API key and keep it out of logs.
+- A `video_generate` result is also a ready Artifact of the Session. Download a video with
+  `listArtifacts` and `downloadArtifact`, as in the previous section.
+
+```ts
+import { writeFile } from 'node:fs/promises'
+
+const events = await zc.listAllEvents(agentId, sessionId, { types: ['attachment.created'] })
+for (const event of events) {
+  if (!event.id || event.payload.toolName === 'video_generate') continue
+  const route = `${process.env.ZOOWORK_BASE_URL}/agents/${agentId}/conversations/${sessionId}/attachments/${event.id}:0/download`
+  const res = await fetch(route, { headers: { Authorization: `Bearer ${process.env.ZOOWORK_API_KEY}` } })
+  if (!res.ok) throw new Error(`Download URL failed: ${res.status}`)
+  const { url } = (await res.json()) as { url: string }
+  const file = await fetch(url)
+  if (!file.ok) throw new Error(`Download failed: ${file.status}`)
+  await writeFile(String(event.payload.fileName), Buffer.from(await file.arrayBuffer()))
+}
+```
+
+To use the developer's own image or speech provider with their own key, keep the key in the
+backend and expose the provider as an application-executed custom tool. Do not put the key in
+the sandbox. Do not read the platform-set environment variables in the sandbox from `exec` or
+Agent scripts, and do not use them to call models or other platform services: they are not a
+supported interface, and model calls made with them are not recorded in the Agent's runs.
+
 ## Agent webhook management
 
 All management is under `/service/v1/agents/{agent_id}/webhooks`.
