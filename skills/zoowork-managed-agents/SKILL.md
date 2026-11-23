@@ -1,6 +1,6 @@
 ---
 name: zoowork-managed-agents
-description: Build on ZooWork Managed Agents through the `@zoowork-ai/sdk` TypeScript SDK or `zoowork` Python SDK. Use whenever ZooWork, a `zwp_live_`, `agt_`, or `skl_` identifier, `ZOOWORK_API_KEY`, a ZooWork Agent or Session, streaming events, custom tools, MCP, platform Skills, Environments, channels, schedules, thinking levels or reasoning effort, approvals, or ZooWork API errors are mentioned. Inspect the installed SDK version and read the routed reference before writing ZooWork code.
+description: Build on ZooWork Managed Agents through the `@zoowork-ai/sdk` TypeScript SDK or `zoowork` Python SDK. Use whenever ZooWork, a `zwp_live_`, `agt_`, or `skl_` identifier, `ZOOWORK_API_KEY`, a ZooWork Agent or Session, streaming events, custom tools, image, video or speech generation, MCP, platform Skills, Environments, channels, schedules, thinking levels or reasoning effort, approvals, or ZooWork API errors are mentioned. Inspect the installed SDK version and read the routed reference before writing ZooWork code.
 license: MIT
 ---
 
@@ -68,6 +68,7 @@ Docs paths are relative to `https://zoowork.ai/docs/`.
 | Securing a deployment, prompt injection, data boundaries, or monitoring Sessions for misuse | `security/secure-deployment.md`, `security/risks-and-boundaries.md`, `security/monitor-sessions.md` | - |
 | Python import, snake_case method, return shape, event helper, custom tool, Session cursor, Agent config, MCP, or channel | `reference/python-sdk.md`, plus the Python tabs of the matching `build/` page | `references/python-sdk.md` |
 | Sending a local file (PDF, image, CSV, any bytes) to an Agent, text task inputs, file outputs, Database availability, Usage, Organization balance, webhook registration/verification/delivery diagnostics, Run Output, or action paging/detail | `build/files.md`, `build/data-storage.md`, `reference/usage.md`, `build/webhooks.md`, `build/session-operations.md` | `references/developer-api.md` |
+| Generate images, video or speech, or download generated files | `build/tools.md` (Media generation tools) | `references/developer-api.md` — use the built-in tools, not a custom tool or sandbox script |
 | Stream replies, reconnect, render events or tool calls, read/export history, or write Session events | `build/events.md`, `build/sessions.md`, `build/session-operations.md` | `references/events-and-streaming.md` |
 | Host an Agent built locally, select its Skills, deploy one Agent per user, or keep one Skill synchronized across a fleet | `build/per-user-agents.md`, `build/skills.md`, `build/agents.md` | `references/deploy-your-agent.md` — follow it in order |
 | Upload, version, list, or delete a platform Skill ZIP | `build/skills.md` | `references/skill-registry.md` — check deployment support and the key's write scope |
@@ -307,7 +308,11 @@ Do not run live, billable, or tenant-mutating calls merely to answer a design qu
 - For raw HTTP, use the SDK, `curl`, `requests` or `httpx`. The public edge rejects Python's
   default `urllib` User-Agent (`Python-urllib/...`) with `403` and the body `error code: 1010`.
   That is not an API-key error; set an explicit `User-Agent` header if you must use `urllib`.
-- `exec(agentId, args)` takes argv. A non-zero process exit can still be HTTP 200.
+- `exec(agentId, args)` takes argv. A non-zero process exit can still be HTTP 200. Use it to
+  prepare or inspect the workspace. Do not read the sandbox's platform-set environment variables
+  or use them to call models; they are not a supported interface. Image, video and speech
+  generation are built-in tools; check the built-in tools before wrapping a capability in a
+  custom tool.
 - `stopAgent` cancels running work and blocks new Sessions and turns; it does not destroy the
   sandbox. Schedules stay defined, and each fire is skipped with reason `runtime_stopped` while
   the Agent is stopped. To remove a throwaway Agent, delete its schedules, call `stopAgent`, then
