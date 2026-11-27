@@ -25,6 +25,18 @@ open response object use `encoding/json.Number`. Use `ListEventsPage` and its `N
 page through durable history, or `ListAllEvents` for the full history. Check failures with
 `errors.As` and `*zoowork.Error`. Its `Type` and `Code` are exact server values.
 
+For Agent Build, create or reopen the Build Session with `CreateBuildAgent` or `OpenBuildSession`.
+Send text on that Session and use the event's run ID with `GetBuildRun` to check the saved and
+applied revision. Use `ListRevisions` and `GetRevisionDiff` to inspect saved changes. For a shared
+Agent installation, use `PreviewInstall` and pass the source revision ID it returns to
+`InstallSharedAgent`.
+
+For a Session model update, read `GetSessionModel` first. Send its selection and config versions
+back as `expected_selection_version` and `expected_config_version` in `UpdateSessionModel`.
+Use `"model_id": nil` to restore the Agent's model and thinking settings. Setting a thinking
+level pins the current model to the Session. A Session following an `auto` Agent without a
+selected model also needs a `model_id` when setting a level.
+
 For incoming webhooks, pass the original request bytes and HTTP headers to `UnwrapWebhook`
 before consuming data. Use a secret from server-side configuration. See the public
 [webhook guide](https://zoowork.ai/docs/build/webhooks.md) for verification and delivery handling.
