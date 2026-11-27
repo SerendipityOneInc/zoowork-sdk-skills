@@ -2,8 +2,9 @@
 
 Read this before integrating these capability groups. Production checks on 2026-10-03 exercised
 Usage, Run Output, action detail and paging, the message-to-Artifact flow, and Agent webhook
-registration, test delivery, redelivery and secret rotation with `@zoowork-ai/sdk` 0.10.x and
-`zoowork` 0.5.x. Check the installed SDK exports/source first; do not assume an
+registration, test delivery, redelivery and secret rotation. The delivery-list `receiptId` /
+`receipt_id` filter needs `@zoowork-ai/sdk` 0.15.0 or `zoowork` 0.10.0 or later. Check the
+installed SDK exports/source first; do not assume an
 older registry release contains a newly added method. If absent, use the corresponding documented
 HTTP route with the existing backend client configuration. Do not upgrade or make live writes
 merely to answer a capability question.
@@ -32,7 +33,12 @@ parameters. Responses retain API spelling and unknown fields. Reporting does not
 Session dollar cap. Production invalid Usage parameters can return 422 with a `detail` array
 and no business error type (for example an invalid range or page size), or 400
 `usage.invalid_query` for invalid timezone. Correct the query; do not retry unchanged.
-`credits` uses Platform credits, at 200 credits/USD. Key-scoped consumption is not the
+Usage reports spend as `amount`, a USD decimal string on `totals`, each group and each record,
+with top-level `currency: 'usd'`. It is not rounded to cents (`"1.00"`, `"12.434"`, `"0.01123"`),
+so add amounts as decimals, not floats. For billing, cost display or reconciliation, always read
+`amount` with `currency`. `credits` in the same response is deprecated (`@deprecated` on
+`UsageSpend.credits`): it is an internal accounting unit, not a currency amount, so never bill,
+display or convert it. Key-scoped consumption is not the
 Organization balance or a complete Organization cost report. Read the balance with `getBalance()` /
 `get_balance()`: any Platform key in the Organization, including a Project key, gets
 `{ object: 'balance', available_amount, currency: 'usd' }`. `available_amount` is a two-place USD
@@ -237,9 +243,9 @@ const created = await zc.createAgentWebhook(agentId, {
 // Store a non-null signing_secret securely; never log it.
 const page = await zc.listAgentWebhooks(agentId) // page.webhooks
 const receipt = await zc.testAgentWebhook(agentId, created.endpoint.id, 'test-hook-v1')
-// receipt.receipt_id identifies this test. Filter by it where the SDK supports it (below).
+// receipt.receipt_id identifies this test; filter its delivery by it.
 const deliveries = await zc.listAgentWebhookDeliveries(agentId, created.endpoint.id, {
-  eventType: 'webhook.test',
+  receiptId: receipt.receipt_id,
 })
 ```
 
@@ -253,6 +259,9 @@ page = await client.list_agent_webhooks(agent_id)  # page["webhooks"]
 receipt = await client.test_agent_webhook(
     agent_id, created["endpoint"]["id"], idempotency_key="test-hook-v1",
 )
+deliveries = await client.list_agent_webhook_deliveries(
+    agent_id, created["endpoint"]["id"], receipt_id=receipt["receipt_id"],
+)
 ```
 
 Create, rotation, test and redelivery require a stable idempotency key. SDK writes do not retry
@@ -262,12 +271,10 @@ revoke_previous_after of 0 or 86400. Endpoint updates and deletion use POST acti
 
 A 202 receipt acknowledges queuing, not delivery or business processing. Query delivery list/detail
 for attempts and outcome. Delivery filters include status, event type/id, receipt, session, run and
-schedule. To poll for one test, filter by the `receipt_id` the test call returned: the
-`receipt_id` query parameter of the delivery list. `event_type=webhook.test` alone also matches
-other tests on the same endpoint. Check the installed SDK declarations for a `receiptId` /
-`receipt_id` delivery-list option before using it; without one, call the route directly or match
-`webhook.test` deliveries only when no other test can run concurrently. The cursor is bound to
-the filter set, so keep filters unchanged while paging.
+schedule. To poll for one test, filter by the `receipt_id` the test call returned, as above.
+`event_type=webhook.test` alone also matches other tests on the same endpoint. On an older SDK
+without the option, pass the `receipt_id` query parameter to the delivery-list route directly.
+The cursor is bound to the filter set, so keep filters unchanged while paging.
 Endpoint list filters are only cursor/limit. Preserve cursor timestamps without parsing them.
 Batch redelivery selects dead deliveries and accepts since, event_types and a limit.
 

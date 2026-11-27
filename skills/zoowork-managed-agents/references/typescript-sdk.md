@@ -491,7 +491,8 @@ the update looks like it worked. **To change the cadence send `schedule`, the in
 `ScheduleSpec` has three kinds (`cron`, `every`, `at`). Interval input is
 `{ kind: 'every', everyMs: 60_000 }`, with optional `anchorMs` (epoch milliseconds); an enabled
 60-second interval fired automatically in production checks. The old `every` field is not the
-wire contract: migrate explicitly rather than guessing units. Cron is five fields; macros and a `CRON_TZ=` prefix are rejected, and overlap
+wire contract: migrate explicitly rather than guessing units. Cron is five fields with the timezone in `tz`. Do not use macros such as `@daily` or a `CRON_TZ=`
+prefix: the API does not reject them, but they are not the supported form. Overlap
 is fixed to skip server-side, so a fire landing on a still-running one is dropped, not queued.
 
 `createSchedule` is 409 when you re-create an existing `schedule_id` with a **different**
@@ -617,9 +618,10 @@ Persistent workspace storage has no documented fixed quota or retention SLA.
 
 ## Credentials
 
-The gateway seeds model credentials itself at create. For an MCP server that needs each end
-user's own credential, use Vault (beta, 0.15.0+): declare the server with `auth: { type: 'vault' }`
-and attach the user's Vault when you create their Session; the Vault methods and
+The gateway seeds model credentials itself at create. For an MCP server that needs a credential,
+use Vault (beta, 0.15.0+): declare the server with `auth: { type: 'vault' }` and attach a Vault
+that holds the credential when you create each Session, either the user's own Vault or one Vault
+that every Session shares for a key your application owns; the Vault methods and
 `VaultBetaUnavailableError` are documented in `build/vault.md` and the TypeScript reference.
 `McpServerDeclaration.credential` is a different mechanism: the slug is stored on the Agent, but a
 Project key has no endpoint to store the secret behind it, so do not use it. A server that declares

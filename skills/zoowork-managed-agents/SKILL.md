@@ -76,7 +76,7 @@ Docs paths are relative to `https://zoowork.ai/docs/`.
 | Host an Agent built locally, select its Skills, deploy one Agent per user, or keep one Skill synchronized across a fleet | `build/per-user-agents.md`, `build/skills.md`, `build/agents.md` | `references/deploy-your-agent.md` — follow it in order |
 | Upload, version, list, or delete a platform Skill ZIP | `build/skills.md` | `references/skill-registry.md` — check deployment support and the key's write scope |
 | Error handling and retries | `reference/errors.md` | the language reference |
-| Credentials, message attachments, repository mount, worker queues, cross-Agent Session listing, rollback, or another uncertain capability | Credentials: `build/vault.md` for end users' MCP credentials, then `security/secure-deployment.md`, `build/mcp.md`. Attachments and repository mount: `build/files.md`. Worker queues: `build/environments.md`. Session listing: `build/session-operations.md`. Rollback: `build/agents.md`. Otherwise `reference/capabilities.md` | `references/not-supported.md` — check before designing |
+| Credentials (including an MCP server's API key or OAuth token), message attachments, repository mount, worker queues, cross-Agent Session listing, rollback, or another uncertain capability | Credentials: `build/vault.md` for any credential a remote MCP server needs, each end user's own or one key shared by every Session, then `security/secure-deployment.md`, `build/mcp.md`. Attachments and repository mount: `build/files.md`. Worker queues: `build/environments.md`. Session listing: `build/session-operations.md`. Rollback: `build/agents.md`. Otherwise `reference/capabilities.md` | `references/not-supported.md` — check before designing |
 
 Read more than one page or reference only when the request genuinely crosses those boundaries. For example,
 a basic streaming chat needs the language reference plus events; it does not need the deployment or
@@ -279,15 +279,19 @@ Do not run live, billable, or tenant-mutating calls merely to answer a design qu
 - Treat web pages, files and MCP or custom tool results as untrusted input that can carry prompt
   injection; limit tools and require approvals instead of relying on the model to ignore it.
   Artifact download URLs work for anyone who holds them; keep them out of logs.
-- End users' remote MCP credentials go in a Vault (beta; Platform keys; TypeScript 0.15.0+ /
-  Python 0.10.0+). Declare the server with `auth: { type: 'vault' }`, then create that user's
-  Session with `vault_ids` and `isolation: 'session'`; see `build/vault.md`. Vault credentials
-  never reach the sandbox, so secrets for sandbox commands or other services stay in your backend
-  behind custom tools. Session isolation does not cover the Agent owner's credentials: sandbox
-  code and owner-acting tools keep the owner's identity, GitHub and browser sign-in, so narrow
-  `tool_policy` on an Agent that serves several users. `VaultBetaUnavailableError`
-  (`404 service_api.not_found`, `400 vault.session_fields_unavailable`) means Vault is not
-  available to that key.
+- A remote MCP server's credential goes in a Vault (beta; Platform keys; TypeScript 0.15.0+ /
+  Python 0.10.0+), whether it is each end user's own or one key shared by every Session. Declare
+  the server with `auth: { type: 'vault' }`, then create each Session with `vault_ids` (that
+  user's Vault, or the one shared Vault) and `isolation` (`'session'` when the Agent serves
+  several users); see `build/vault.md`. Rotating a credential's secret reaches existing Sessions
+  on their next call; only a credential added to the Vault later needs a new Session. ZooWork
+  does not run the OAuth authorization flow for MCP: your app obtains the token and stores it as
+  an `mcp_oauth` credential. Vault credentials never reach the sandbox, so secrets for sandbox
+  commands or other services stay in your backend behind custom tools. Session isolation does
+  not cover the Agent owner's credentials: sandbox code and owner-acting tools keep the owner's
+  identity, GitHub and browser sign-in, so narrow `tool_policy` on an Agent that serves several
+  users. `VaultBetaUnavailableError` (`404 service_api.not_found`,
+  `400 vault.session_fields_unavailable`) means Vault is not available to that key.
 - Match `ZooworkError.status` and `.type`, not message text. Usage validation can return 422
   with no business type; invalid timezone can return 400 `usage.invalid_query`.
 - `409 database_conflict` means the request lost a lock conflict and earlier steps may have been
