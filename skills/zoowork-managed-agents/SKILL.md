@@ -1,6 +1,6 @@
 ---
 name: zoowork-managed-agents
-description: Build on ZooWork Managed Agents through the `@zoowork-ai/sdk` TypeScript SDK or `zoowork` Python SDK. Use whenever ZooWork, a `zwp_live_`, `agt_`, or `skl_` identifier, `ZOOWORK_API_KEY`, a ZooWork Agent or Session, streaming events, custom tools, MCP, platform Skills, Environments, channels, schedules, thinking levels or reasoning effort, approvals, or ZooWork API errors are mentioned. Inspect the installed SDK version and read the routed reference before writing ZooWork code.
+description: Build on ZooWork Managed Agents through the TypeScript SDK `@zoowork-ai/sdk`, Python SDK `zoowork`, or Go module `github.com/SerendipityOneInc/zoowork-sdk-go`. Use whenever ZooWork, a `zwp_live_`, `agt_`, or `skl_` identifier, `ZOOWORK_API_KEY`, a ZooWork Agent or Session, streaming events, custom tools, MCP, platform Skills, Environments, channels, schedules, thinking levels or reasoning effort, approvals, or ZooWork API errors are mentioned. Inspect the installed SDK version and read the routed reference before writing ZooWork code.
 license: MIT
 ---
 
@@ -36,9 +36,11 @@ These are the most common reasons code compiles but fails at runtime:
 
 Before writing code:
 
-1. Read `package.json`, `pyproject.toml`, lockfiles, and existing imports.
-2. Determine whether the project uses `@zoowork-ai/sdk` or `zoowork`, and record its installed
-   version. Do not upgrade it unless the user asks.
+1. Read the manifest and existing imports. Check `package.json` for TypeScript, `pyproject.toml` for
+   Python, and `go.mod` for Go.
+2. Determine which SDK the project uses and record its installed version. In Go, check the
+   resolved module with `go list -m github.com/SerendipityOneInc/zoowork-sdk-go` and inspect
+   signatures with `go doc`. Do not upgrade it unless the user asks.
 3. Check whether `ZOOWORK_API_KEY` and `ZOOWORK_BASE_URL` are present without printing their values.
 4. Reuse the project's existing client and configuration style.
 5. If the installed package ships `AGENTS.md` and `CHANGELOG.md` (TypeScript 0.14.0+:
@@ -47,10 +49,11 @@ Before writing code:
    them. When the docs rely on a method the installed release lacks, tell the user which release
    adds it instead of upgrading silently.
 6. Read the routed docs page and reference below. For an exact method or type, verify the
-   installed declarations or Python source as the final authority.
+   installed declarations or source as the final authority.
 
 If no project is present, state which package and runtime the example assumes. Install the
-published package with `npm install @zoowork-ai/sdk` or `python -m pip install zoowork`. The
+package with `npm install @zoowork-ai/sdk`, `python -m pip install zoowork`, or
+`go get github.com/SerendipityOneInc/zoowork-sdk-go@<published-version>`. The
 Quickstart's Prerequisites section states the SDK releases and runtime versions the docs assume;
 read it rather than relying on a remembered version. If an existing project pins an older release,
 say so and ask before upgrading.
@@ -67,6 +70,7 @@ Docs paths are relative to `https://zoowork.ai/docs/`.
 | Approvals, `always_ask` / `always_allow`, unattended jobs, or MCP permission defaults | `build/permissions.md`, `build/tools.md` | `references/tool-permissions.md`, then the language reference |
 | Securing a deployment, prompt injection, data boundaries, or monitoring Sessions for misuse | `security/secure-deployment.md`, `security/risks-and-boundaries.md`, `security/monitor-sessions.md` | - |
 | Python import, snake_case method, return shape, event helper, custom tool, Session cursor, Agent config, MCP, or channel | `reference/python-sdk.md`, plus the Python tabs of the matching `build/` page | `references/python-sdk.md` |
+| Go module, client, Agent lifecycle, Session cursor, event helper, or webhook signature | `reference/go-sdk.md`, plus the matching `build/` page | `references/go-sdk.md` |
 | Sending a local file (PDF, image, CSV, any bytes) to an Agent, text task inputs, file outputs, Database availability, Usage, Organization balance, webhook registration/verification/delivery diagnostics, Run Output, or action paging/detail | `build/files.md`, `build/data-storage.md`, `reference/usage.md`, `build/webhooks.md`, `build/session-operations.md` | `references/developer-api.md` |
 | Stream replies, reconnect, render events or tool calls, read/export history, or write Session events | `build/events.md`, `build/sessions.md`, `build/session-operations.md` | `references/events-and-streaming.md` |
 | Host an Agent built locally, select its Skills, deploy one Agent per user, or keep one Skill synchronized across a fleet | `build/per-user-agents.md`, `build/skills.md`, `build/agents.md` | `references/deploy-your-agent.md` — follow it in order |
@@ -170,6 +174,9 @@ For Python, use the same lifecycle with `create_zoowork_client`, `list_models`, 
 `start_agent`, `wait_until_running`, `create_session`, `stream_events`, `assistant_text`, and
 `is_run_finished`. Read `references/python-sdk.md` before writing the exact call shapes; nested
 payloads retain public wire spelling where documented.
+
+For Go, use a context with a deadline and read [the Go reference](references/go-sdk.md) for
+configuration, receipt handling and the typed event iterator.
 
 ## Session and event rules
 

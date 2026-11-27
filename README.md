@@ -46,9 +46,9 @@ platform, so it earns its keep in *your* project.
 |---|---|
 | [`zoowork-managed-agents`](skills/zoowork-managed-agents/SKILL.md) | A task-first entrypoint for Agent setup and configuration, Sessions and events, platform Skills, deployment, and public capability boundaries; it routes each task to the matching page of the [public docs](https://zoowork.ai/docs/llms.txt), with references for SDK detail the docs do not yet cover |
 
-`zoowork-managed-agents` covers both official SDKs: TypeScript package `@zoowork-ai/sdk` and
-Python package `zoowork`. It keeps their camelCase and snake_case method names separate while
-teaching the same public API contract.
+`zoowork-managed-agents` covers TypeScript package `@zoowork-ai/sdk`, Python package `zoowork`,
+and Go module `github.com/SerendipityOneInc/zoowork-sdk-go`. Each language reference uses its
+SDK's method names and the same public API contract.
 
 ## Two things called "skill"
 
